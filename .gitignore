@@ -1,0 +1,28 @@
+# Dependências e saídas de compilação
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.cache/
+.turbo/
+*.tsbuildinfo
+
+# Ambiente, credenciais e dados de execução
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+logs/
+data/
+backups/
+
+# Saídas de testes e ferramentas locais
+playwright-report/
+test-results/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
