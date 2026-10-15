@@ -155,7 +155,7 @@ describe('piloting the ship with an exclusive helm', () => {
     const refusedBefore = rejectedB.length;
     b.send(ClientMessage.HelmRequest);
     await waitFor(() => a.state.ship.operatorId === b.sessionId, {
-      label: `novo operador (recusas: ${JSON.stringify(rejectedB.slice(refusedBefore))})`,
+      label: () => `novo operador (recusas: ${JSON.stringify(rejectedB.slice(refusedBefore))})`,
     });
   });
 

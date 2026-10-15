@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { type AppearanceColorId, isAppearanceColorId } from '@orbit/catalog';
-import { normalizeNick } from '@orbit/contracts';
+import { nickSchema, normalizeNick } from '@orbit/contracts';
 import { type Database, isUniqueViolation } from '../client';
 import { accounts, profiles } from '../schema';
 
@@ -13,13 +13,17 @@ export interface NewAccount {
 
 export type CreateAccountResult =
   | { readonly ok: true; readonly accountId: string }
-  | { readonly ok: false; readonly code: 'nick_taken' };
+  | { readonly ok: false; readonly code: 'nick_taken' | 'invalid_nick' };
 
 /**
  * Creates the account and its profile atomically. A nick that differs only in
  * case from an existing one is refused by the unique index, also under concurrency.
  */
 export async function createAccount(db: Database, input: NewAccount): Promise<CreateAccountResult> {
+  if (!nickSchema.safeParse(input.nick).success) return { ok: false, code: 'invalid_nick' };
+  if (!input.passwordHash.startsWith('$argon2id$')) {
+    throw new RangeError('Hash de senha precisa ser Argon2id');
+  }
   // The database only checks the ID format; the catalog is the source of valid options.
   if (!isAppearanceColorId(input.colorId)) {
     throw new RangeError(`Cor fora do catálogo: ${String(input.colorId)}`);
@@ -57,6 +61,8 @@ export async function findAccountByNick(
   db: Database,
   nick: string,
 ): Promise<AccountCredentials | null> {
+  // Reject before normalizing: some non-ASCII letters lowercase into ASCII (e.g. the Kelvin sign).
+  if (!nickSchema.safeParse(nick).success) return null;
   const [row] = await db
     .select({
       id: accounts.id,

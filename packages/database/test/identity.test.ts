@@ -17,7 +17,7 @@ describe('identity schema', () => {
   });
 
   afterAll(async () => {
-    await t.drop();
+    await t?.drop();
   });
 
   const newAccount = (nick: string) =>
@@ -176,24 +176,46 @@ describe('identity schema', () => {
     expect(await count()).toEqual([{ sessions: 0, recovery: 0, profiles: 0 }]);
   });
 
-  it('refreshes updated_at when an account changes through Drizzle', async () => {
+  it('refreshes updated_at with the database clock on any update', async () => {
     const account = await newAccount('Atualiza');
     if (!account.ok) throw new Error('conta não criada');
-    const before = await t.pool.query<{ updated_at: Date }>(
-      'SELECT updated_at FROM accounts WHERE id = $1',
-      [account.accountId],
-    );
+    const read = async () =>
+      (
+        await t.pool.query<{ created_at: Date; updated_at: Date }>(
+          'SELECT created_at, updated_at FROM accounts WHERE id = $1',
+          [account.accountId],
+        )
+      ).rows[0];
+    const created = await read();
     await new Promise((resolve) => setTimeout(resolve, 20));
     await t.db
       .update(accounts)
       .set({ status: 'disabled' })
       .where(eq(accounts.id, account.accountId));
-    const after = await t.pool.query<{ updated_at: Date }>(
-      'SELECT updated_at FROM accounts WHERE id = $1',
-      [account.accountId],
+    const viaDrizzle = await read();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await t.pool.query("UPDATE accounts SET status = 'active' WHERE id = $1", [account.accountId]);
+    const viaSql = await read();
+    expect(viaDrizzle?.updated_at.getTime()).toBeGreaterThan(
+      created?.updated_at.getTime() ?? Infinity,
     );
-    expect(after.rows[0]?.updated_at.getTime()).toBeGreaterThan(
-      before.rows[0]?.updated_at.getTime() ?? Infinity,
+    expect(viaSql?.updated_at.getTime()).toBeGreaterThan(
+      viaDrizzle?.updated_at.getTime() ?? Infinity,
     );
+    expect(viaSql?.created_at).toEqual(created?.created_at);
+  });
+
+  it('validates nicks before writing or looking them up', async () => {
+    expect(await newAccount('nome com espaço')).toEqual({ ok: false, code: 'invalid_nick' });
+    expect(await newAccount('Kelvin')).toEqual({ ok: true, accountId: expect.any(String) });
+    // The Kelvin sign lowercases to an ASCII "k" but is not a valid nick.
+    expect(await findAccountByNick(t.db, '\u212Aelvin')).toBeNull();
+    await expect(
+      createAccount(t.db, {
+        nick: 'Hash_Ruim',
+        passwordHash: 'texto-puro',
+        colorId: DEFAULT_APPEARANCE_COLOR,
+      }),
+    ).rejects.toThrow(RangeError);
   });
 });

@@ -1,5 +1,5 @@
 {
-  "id": "f07677b8-e74d-4ea2-80d8-48fbf832ba86",
+  "id": "ac49cb3d-eec6-4918-b681-dbaaf39d06da",
   "prevId": "d0b934f2-2ba6-416e-8fb5-8435164111f0",
   "version": "7",
   "dialect": "postgresql",
@@ -54,6 +54,21 @@
           ],
           "isUnique": true,
           "where": "\"account_recovery\".\"used_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "account_recovery_account_id_idx": {
+          "name": "account_recovery_account_id_idx",
+          "columns": [
+            {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -333,8 +348,8 @@
           "method": "btree",
           "with": {}
         },
-        "sessions_active_by_account_idx": {
-          "name": "sessions_active_by_account_idx",
+        "sessions_account_id_idx": {
+          "name": "sessions_account_id_idx",
           "columns": [
             {
               "expression": "account_id",
@@ -344,7 +359,6 @@
             }
           ],
           "isUnique": false,
-          "where": "\"sessions\".\"revoked_at\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

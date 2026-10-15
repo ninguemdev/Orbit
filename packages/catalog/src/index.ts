@@ -38,6 +38,14 @@ export const APPEARANCE_COLORS: Readonly<Record<AppearanceColorId, { name: strin
     [AppearanceColorId.Pink]: { name: 'Rosa', hex: 0xf06292 },
   };
 
+/** Stable order used to tint crew members in shared rooms. */
+export const APPEARANCE_COLOR_ORDER: readonly AppearanceColorId[] = [
+  AppearanceColorId.Cyan,
+  AppearanceColorId.Amber,
+  AppearanceColorId.Green,
+  AppearanceColorId.Pink,
+];
+
 export const DEFAULT_APPEARANCE_COLOR: AppearanceColorId = AppearanceColorId.Cyan;
 
 export function isAppearanceColorId(value: string): value is AppearanceColorId {

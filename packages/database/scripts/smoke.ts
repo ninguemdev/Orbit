@@ -7,26 +7,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import pg from 'pg';
 import { MIGRATIONS_FOLDER, runMigrations } from '../src/migrate';
 import { createPool, readDatabaseUrl } from '../src/pool';
+import { createThrowawayDatabase } from '../src/throwaway-database';
 
-const adminUrl = readDatabaseUrl();
-const databaseName = `orbit_smoke_${Date.now()}_${process.pid}`;
 const journal = JSON.parse(
   readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'),
 ) as {
   entries: unknown[];
 };
 
-const admin = new pg.Client({ connectionString: adminUrl, application_name: 'orbit-smoke-admin' });
-await admin.connect();
-await admin.query(`CREATE DATABASE "${databaseName}"`);
+const throwaway = await createThrowawayDatabase(readDatabaseUrl(), 'orbit_smoke');
+const { admin, name: databaseName } = throwaway;
 
 try {
-  const url = new URL(adminUrl);
-  url.pathname = `/${databaseName}`;
-  const pool = createPool({ connectionString: url.toString(), max: 2 });
+  const pool = createPool({ connectionString: throwaway.url, max: 2 });
 
   await runMigrations(pool);
   await runMigrations(pool);
@@ -68,6 +63,5 @@ try {
     `[database] smoke ok: ${journal.entries.length} migração(ões) em banco vazio, reaplicação idempotente, conexões encerradas`,
   );
 } finally {
-  await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
-  await admin.end();
+  await throwaway.drop();
 }

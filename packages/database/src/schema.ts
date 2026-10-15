@@ -12,12 +12,8 @@ export const appMetadata = pgTable('app_metadata', {
 });
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
-/** Refreshed by Drizzle on every update issued through the repositories. */
-const updatedAt = () =>
-  timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date());
+/** Refreshed by a BEFORE UPDATE trigger (migration 0002), using the database clock. */
+const updatedAt = () => timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
 
 /**
  * Player accounts. The nick is shown as typed and compared case-insensitively
@@ -62,9 +58,8 @@ export const sessions = pgTable(
   },
   (table) => [
     uniqueIndex('sessions_token_hash_key').on(table.tokenHash),
-    index('sessions_active_by_account_idx')
-      .on(table.accountId)
-      .where(sql`${table.revokedAt} IS NULL`),
+    // Plain index: also serves cascades and FK checks over revoked sessions.
+    index('sessions_account_id_idx').on(table.accountId),
     check('sessions_token_hash_sha256_hex', sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
     check('sessions_expires_after_creation', sql`${table.expiresAt} > ${table.createdAt}`),
   ],
@@ -89,6 +84,7 @@ export const accountRecovery = pgTable(
     uniqueIndex('account_recovery_one_unused_per_account')
       .on(table.accountId)
       .where(sql`${table.usedAt} IS NULL`),
+    index('account_recovery_account_id_idx').on(table.accountId),
     check('account_recovery_code_hash_sha256_hex', sql`${table.codeHash} ~ '^[0-9a-f]{64}$'`),
   ],
 );

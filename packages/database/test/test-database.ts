@@ -1,7 +1,8 @@
-import pg from 'pg';
+import type pg from 'pg';
 import { type Database, createDatabase } from '../src/client';
 import { runMigrations } from '../src/migrate';
 import { createPool, readDatabaseUrl } from '../src/pool';
+import { createThrowawayDatabase } from '../src/throwaway-database';
 
 export interface TestDatabase {
   readonly pool: pg.Pool;
@@ -9,26 +10,24 @@ export interface TestDatabase {
   drop(): Promise<void>;
 }
 
-/** Creates an isolated, migrated database for one test file and drops it afterwards. */
+/** Creates an isolated, migrated database for one test file; cleans up if setup fails. */
 export async function createTestDatabase(): Promise<TestDatabase> {
-  const adminUrl = readDatabaseUrl();
-  const name = `orbit_test_${Date.now()}_${process.pid}_${Math.floor(Math.random() * 1e6)}`;
-  const admin = new pg.Client({ connectionString: adminUrl });
-  await admin.connect();
-  await admin.query(`CREATE DATABASE "${name}"`);
-  const url = new URL(adminUrl);
-  url.pathname = `/${name}`;
-  const pool = createPool({ connectionString: url.toString(), max: 8 });
-  await runMigrations(pool);
-  return {
-    pool,
-    db: createDatabase(pool),
-    async drop() {
+  const throwaway = await createThrowawayDatabase(readDatabaseUrl(), 'orbit_test');
+  const pool = createPool({ connectionString: throwaway.url, max: 8 });
+  const drop = async () => {
+    try {
       await pool.end();
-      await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
-      await admin.end();
-    },
+    } finally {
+      await throwaway.drop();
+    }
   };
+  try {
+    await runMigrations(pool);
+  } catch (error) {
+    await drop();
+    throw error;
+  }
+  return { pool, db: createDatabase(pool), drop };
 }
 
 /** A syntactically valid Argon2id hash for tests that do not exercise hashing. */

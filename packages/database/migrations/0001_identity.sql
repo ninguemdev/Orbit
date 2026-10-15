@@ -45,6 +45,7 @@ ALTER TABLE "account_recovery" ADD CONSTRAINT "account_recovery_account_id_accou
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "account_recovery_one_unused_per_account" ON "account_recovery" USING btree ("account_id") WHERE "account_recovery"."used_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "account_recovery_account_id_idx" ON "account_recovery" USING btree ("account_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "accounts_nick_normalized_key" ON "accounts" USING btree ("nick_normalized");--> statement-breakpoint
 CREATE UNIQUE INDEX "sessions_token_hash_key" ON "sessions" USING btree ("token_hash");--> statement-breakpoint
-CREATE INDEX "sessions_active_by_account_idx" ON "sessions" USING btree ("account_id") WHERE "sessions"."revoked_at" IS NULL;
+CREATE INDEX "sessions_account_id_idx" ON "sessions" USING btree ("account_id");
