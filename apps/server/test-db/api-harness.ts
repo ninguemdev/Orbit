@@ -11,7 +11,7 @@ import {
   updateProfileClass,
 } from '@orbit/database';
 import type pg from 'pg';
-import { createGameServer } from '../src/app';
+import { type GameServices, createGameServer } from '../src/app';
 import { type IdentityPolicy, IdentityService } from '../src/modules/identity/identity-service';
 import { type PasswordHasher, createArgon2Hasher } from '../src/modules/identity/password-hasher';
 import { configureProcessCors } from '../src/transport/http/cors-policy';
@@ -27,7 +27,11 @@ export interface ApiServer {
 }
 
 /** Real server + real Argon2id + throwaway PostgreSQL database. */
-export async function startApiServer(policy: IdentityPolicy): Promise<ApiServer> {
+/** `services` replaces the default ports (e.g. a class store that fails on purpose). */
+export async function startApiServer(
+  policy: IdentityPolicy,
+  services: Partial<GameServices> = {},
+): Promise<ApiServer> {
   const throwaway = await createThrowawayDatabase(readDatabaseUrl(), 'orbit_api_test');
   const pool = createPool({ connectionString: throwaway.url, max: 8 });
   let server: Server | undefined;
@@ -62,6 +66,7 @@ export async function startApiServer(policy: IdentityPolicy): Promise<ApiServer>
         classPreferences: {
           save: (accountId, classId) => updateProfileClass(db, accountId, classId),
         },
+        ...services,
       },
     );
     await server.listen(0, '127.0.0.1');

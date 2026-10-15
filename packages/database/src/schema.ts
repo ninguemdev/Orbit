@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { LOADOUT_SLOTS } from '@orbit/catalog';
 import {
   bigint,
   check,
@@ -214,6 +215,40 @@ export const inboxEntries = pgTable(
       foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
     }).onDelete('cascade'),
     check('inbox_entries_location_inbox', sql`${table.location} = 'inbox'`),
+  ],
+);
+
+/**
+ * Items picked for the next mission. The item stays in its owner's stash (the
+ * composite key requires it): picking changes nothing in the stash, and the match
+ * reservation arrives in 0.3. An item cannot leave the stash while picked, and
+ * deleting it removes it from the loadout.
+ */
+export const loadoutItems = pgTable(
+  'loadout_items',
+  {
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    /** One of LOADOUT_SLOTS: `primary`, `sidearm`, `tool` or `backpack.<n>`. */
+    slot: text('slot').notNull(),
+    itemInstanceId: uuid('item_instance_id').notNull(),
+    location: text('location').notNull().default('stash'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.accountId, table.slot] }),
+    uniqueIndex('loadout_items_item_key').on(table.itemInstanceId),
+    foreignKey({
+      name: 'loadout_items_item_owned_in_stash',
+      columns: [table.itemInstanceId, table.accountId, table.location],
+      foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
+    }).onDelete('cascade'),
+    // Derived from the catalog: changing the slots shows up as schema drift.
+    check(
+      'loadout_items_slot_known',
+      sql`${table.slot} IN (${sql.raw(LOADOUT_SLOTS.map((slot) => `'${slot}'`).join(', '))})`,
+    ),
+    check('loadout_items_location_stash', sql`${table.location} = 'stash'`),
   ],
 );
 

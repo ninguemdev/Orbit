@@ -1,16 +1,5 @@
-import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { signUpInNewContext } from './support/accounts';
-
-/** Grants dev data (items and the hauler license) through the database script. */
-function seedDev(nick: string): void {
-  if (!/^[A-Za-z0-9_]+$/.test(nick)) throw new Error(`nick inesperado: ${nick}`);
-  // pnpm is a .cmd on Windows, which needs a shell; the nick was checked above.
-  execFileSync('pnpm', ['db:seed-dev', nick], {
-    stdio: 'pipe',
-    shell: process.platform === 'win32',
-  });
-}
+import { seedDev, signUpInNewContext } from './support/accounts';
 
 test('forms a party by code and by invite, and hands over leadership', async ({ browser }) => {
   const alfa = await signUpInNewContext(browser, 'Lider');

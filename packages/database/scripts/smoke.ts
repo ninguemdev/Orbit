@@ -38,6 +38,7 @@ try {
       'inbox_entries',
       'inventory_slots',
       'item_instances',
+      'loadout_items',
       'profiles',
       'sessions',
       'ship_unlocks',

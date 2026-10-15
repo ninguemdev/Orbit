@@ -252,3 +252,4 @@ export const SECTORS: Readonly<Record<SectorId, SectorDefinition>> = {
   },
 };
 export * from './items';
+export * from './loadout';

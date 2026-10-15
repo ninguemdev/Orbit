@@ -12,7 +12,7 @@ import {
 } from '../schema';
 
 /** Works with the database or an open transaction. */
-type Executor = Pick<Database, 'select' | 'insert' | 'update' | 'delete' | 'execute'>;
+export type Executor = Pick<Database, 'select' | 'insert' | 'update' | 'delete' | 'execute'>;
 
 /** Largest quantity accepted in one grant (bounds the work done under the account lock). */
 export const MAX_GRANT_QUANTITY = 10_000;
@@ -122,7 +122,7 @@ export async function getInventory(db: Database, accountId: string): Promise<Inv
  * Serializes inventory changes of one account. FOR NO KEY UPDATE does not conflict
  * with the key-share locks taken by inserts referencing the account (logins).
  */
-async function lockAccount(tx: Executor, accountId: string): Promise<boolean> {
+export async function lockAccount(tx: Executor, accountId: string): Promise<boolean> {
   const rows = await tx.execute(
     sql`SELECT 1 FROM ${accounts} WHERE ${accounts.id} = ${accountId} FOR NO KEY UPDATE`,
   );
