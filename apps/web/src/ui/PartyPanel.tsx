@@ -1,4 +1,5 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
+import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER, isClassId } from '@orbit/catalog';
 import { PARTY_MAX_MEMBERS } from '@orbit/contracts';
 import type { PartyControls } from './use-party';
 
@@ -12,6 +13,22 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
   const [nick, setNick] = useState('');
   const { view } = party;
   const isLeader = view?.leaderId === myAccountId;
+  const myClass = view?.members.find((member) => member.accountId === myAccountId)?.classId ?? '';
+  // Shows the choice immediately; the synchronized state confirms it a moment later.
+  const [pendingClass, setPendingClass] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingClass === null) return undefined;
+    if (pendingClass === myClass) {
+      setPendingClass(null);
+      return undefined;
+    }
+    // Not confirmed (refused or lost): fall back to the synchronized state.
+    const timer = setTimeout(() => setPendingClass(null), 3000);
+    return () => clearTimeout(timer);
+  }, [myClass, pendingClass]);
+  const shownClass = pendingClass ?? myClass;
+  const className = (classId: string) =>
+    isClassId(classId) ? CLASS_NAMES[classId] : 'classe não escolhida';
 
   const join = async (event: FormEvent) => {
     event.preventDefault();
@@ -38,7 +55,7 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
           <ul className="party-members" data-testid="party-members">
             {view.members.map((member) => (
               <li key={member.accountId}>
-                {member.nick}
+                {member.nick} ({className(member.classId)})
                 {member.accountId === view.leaderId ? ' — líder' : ''}
                 {member.accountId === myAccountId ? ' (você)' : ''}
                 {member.connected ? '' : ' — desconectado'}
@@ -73,6 +90,35 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
       ) : (
         <p>Conectando à party…</p>
       )}
+
+      {view ? (
+        <fieldset className="class-picker">
+          <legend>Sua classe na próxima missão</legend>
+          <p className="hint">
+            Classes repetidas são permitidas. Nesta versão a escolha só identifica a função na
+            party; os efeitos entram no jogo nas versões indicadas.
+          </p>
+          {CLASS_ORDER.map((classId) => (
+            <label key={classId} className="class-option">
+              <input
+                type="radio"
+                name="class"
+                value={classId}
+                checked={shownClass === classId}
+                onChange={() => {
+                  setPendingClass(classId);
+                  party.selectClass(classId);
+                }}
+              />
+              <strong>{CLASS_NAMES[classId]}</strong>
+              <span className="hint">
+                {CLASS_DESCRIPTIONS[classId].role} Efeitos a partir da{' '}
+                {CLASS_DESCRIPTIONS[classId].availableIn}.
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
 
       {isLeader ? (
         <form onSubmit={invite} aria-label="Convidar por nick" className="inline-form">

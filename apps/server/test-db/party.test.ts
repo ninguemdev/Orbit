@@ -173,6 +173,42 @@ describe('parties', () => {
     expect(members(party)).toEqual([leader.id, guest.id].sort());
   });
 
+  it('lets each member choose a catalog class, repeated classes allowed', async () => {
+    const [leader, guest] = [await account(), await account()];
+    const party = await createParty(leader);
+    const guestRoom = await joinByCode(guest, party.state.inviteCode);
+    await waitFor(() => party.state.members.size === 2, 'dois membros');
+    const classOf = (room: PartyRoomClient, id: string) => {
+      let value = '';
+      room.state.members.forEach((member, memberId) => {
+        if (memberId === id) value = member.classId;
+      });
+      return value;
+    };
+
+    party.send(PartyClientMessage.SelectClass, { classId: 'class.pilot' });
+    guestRoom.send(PartyClientMessage.SelectClass, { classId: 'class.pilot' });
+    await waitFor(
+      () =>
+        classOf(guestRoom, leader.id) === 'class.pilot' &&
+        classOf(party, guest.id) === 'class.pilot',
+      'classes repetidas',
+    );
+    guestRoom.send(PartyClientMessage.SelectClass, { classId: 'class.medic' });
+    await waitFor(() => classOf(party, guest.id) === 'class.medic', 'troca de classe');
+
+    const refused = refusals(guestRoom);
+    guestRoom.send(PartyClientMessage.SelectClass, { classId: 'class.wizard' });
+    guestRoom.send(PartyClientMessage.SelectClass, {
+      classId: 'class.pilot',
+      accountId: leader.id,
+    });
+    await waitFor(() => refused.length === 2, 'recusas');
+    expect(refused.map((refusal) => refusal.code)).toEqual(['unknown_class', 'invalid_payload']);
+    expect(classOf(party, guest.id)).toBe('class.medic');
+    expect(classOf(party, leader.id)).toBe('class.pilot');
+  });
+
   it('refuses a fifth member', async () => {
     const accounts = await Promise.all(Array.from({ length: 5 }, account));
     const [leader, ...others] = accounts;

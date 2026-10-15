@@ -1,8 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { resolveCircleRect, distance } from '@orbit/simulation';
-import { CREW, SECTORS, SHIP_HULLS } from './index';
+import {
+  CLASS_DESCRIPTIONS,
+  CLASS_NAMES,
+  CLASS_ORDER,
+  CREW,
+  ClassId,
+  SECTORS,
+  SHIP_HULLS,
+  isClassId,
+} from './index';
 
 describe('catalog consistency', () => {
+  it('lists every class once, with name and description', () => {
+    expect([...CLASS_ORDER].sort()).toEqual(Object.values(ClassId).sort());
+    for (const classId of CLASS_ORDER) {
+      expect(CLASS_NAMES[classId]).toBeTruthy();
+      expect(CLASS_DESCRIPTIONS[classId].role).toBeTruthy();
+    }
+    expect(isClassId('class.pilot')).toBe(true);
+    expect(isClassId('toString')).toBe(false);
+  });
+
   for (const hull of Object.values(SHIP_HULLS)) {
     it(`${hull.id}: spawns and helm seat are walkable`, () => {
       const points = [...hull.crewSpawns, hull.helm.seat];

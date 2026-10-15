@@ -7,6 +7,7 @@ export const PartyMemberState = schema(
     nick: t.string().default(''),
     connected: t.boolean().default(true),
     joinedAt: t.float64().default(0),
+    classId: t.string().default(''),
   },
   'PartyMember',
 );

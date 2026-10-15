@@ -21,6 +21,44 @@ export const CLASS_NAMES: Readonly<Record<ClassId, string>> = {
   [ClassId.Officer]: 'Oficial',
 };
 
+export interface ClassDescription {
+  /** What the class does in the crew, as designed (docs/03-CLASSES.md). */
+  readonly role: string;
+  /** Milestone where its effects start to work in game; shown so nothing is promised early. */
+  readonly availableIn: string;
+}
+
+export const CLASS_DESCRIPTIONS: Readonly<Record<ClassId, ClassDescription>> = {
+  [ClassId.Pilot]: {
+    role: 'Melhora velocidade, aceleração e giro da nave enquanto ocupa o comando, e recarrega o boost mais rápido.',
+    availableIn: '0.4',
+  },
+  [ClassId.Engineer]: {
+    role: 'Repara casco e motor mais rápido, move-se melhor em EVA e sobrecarrega o motor por alguns segundos.',
+    availableIn: '0.4',
+  },
+  [ClassId.Medic]: {
+    role: 'Cultiva ingredientes na horta da nave, fabrica seringas e aplica tratamentos mais rápido.',
+    availableIn: '0.6',
+  },
+  [ClassId.Officer]: {
+    role: 'Usa armas longas e dá bônus às armas da nave; protege a carga contra piratas.',
+    availableIn: '0.6 e 0.7',
+  },
+};
+
+/** Display order of the classes. */
+export const CLASS_ORDER: readonly ClassId[] = [
+  ClassId.Pilot,
+  ClassId.Engineer,
+  ClassId.Medic,
+  ClassId.Officer,
+];
+
+export function isClassId(value: string): value is ClassId {
+  return Object.hasOwn(CLASS_NAMES, value);
+}
+
 /** Player appearance options. Profiles store these IDs; the server rejects anything else. */
 export const AppearanceColorId = {
   Cyan: 'appearance.color.cyan',

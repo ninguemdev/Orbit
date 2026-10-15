@@ -10,6 +10,7 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 - API de conta: cadastro com nick e senha, login, logout com revogação, `GET /api/me` e alteração da própria cor, com sessão em cookie HttpOnly/SameSite=Strict, Argon2id, limites de tentativa, proteção de Origin/CSRF e CORS restrito às origens permitidas.
 - Telas de acesso no cliente: criar conta (só nick e senha, sem e-mail), entrar, sair e recuperar acesso com código opcional de uso único, gerado após o cadastro e mostrado uma vez.
 - Party de até 4 contas: cada jogador começa numa party solo com código de convite, entra em outra pelo código ou aceitando convite por nick online. O líder remove membros e passa a liderança, e a saída do líder promove o membro mais antigo. A entrada exige ticket de uso único emitido pela API.
+- Escolha de classe por jogador na party (repetição permitida), com roster visível a todos e descrição honesta de quando cada efeito entra no jogo.
 
 ### Corrigido
 

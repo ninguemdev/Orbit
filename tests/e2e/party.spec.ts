@@ -9,7 +9,7 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
 
   await test.step('everyone starts in a solo party with a code', async () => {
     for (const { page, nick } of [alfa, bravo, charlie]) {
-      await expect(members(page)).toContainText(`${nick} — líder (você)`);
+      await expect(members(page)).toContainText(`${nick} (classe não escolhida) — líder (você)`);
     }
     await expect(alfa.page.getByTestId('party-code')).toHaveText(/^[0-9A-Z]{6}$/);
   });
@@ -27,7 +27,7 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
     await bravo.page.getByLabel('Entrar em outra party (código)').fill(code.toLowerCase());
     await bravo.page.getByRole('button', { name: 'Entrar', exact: true }).click();
     for (const page of [alfa.page, bravo.page]) {
-      await expect(members(page)).toContainText(`${alfa.nick} — líder`);
+      await expect(members(page)).toContainText(`${alfa.nick} (classe não escolhida) — líder`);
       await expect(members(page)).toContainText(bravo.nick);
     }
     await expect(bravo.page.getByRole('heading', { name: /Sua party \(2\/4\)/ })).toBeVisible();
@@ -57,8 +57,12 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
 
   await test.step('when the leader leaves, the next member leads', async () => {
     await alfa.page.getByRole('button', { name: 'Sair da party' }).click();
-    await expect(members(alfa.page)).toContainText(`${alfa.nick} — líder (você)`);
-    await expect(members(bravo.page)).toContainText(`${bravo.nick} — líder (você)`);
+    await expect(members(alfa.page)).toContainText(
+      `${alfa.nick} (classe não escolhida) — líder (você)`,
+    );
+    await expect(members(bravo.page)).toContainText(
+      `${bravo.nick} (classe não escolhida) — líder (você)`,
+    );
     await expect(members(bravo.page)).not.toContainText(alfa.nick);
   });
 
@@ -71,7 +75,9 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
     await expect(charlie.page.getByTestId('party-notice')).toHaveText(
       'Você foi removido da party pelo líder.',
     );
-    await expect(members(charlie.page)).toContainText(`${charlie.nick} — líder (você)`);
+    await expect(members(charlie.page)).toContainText(
+      `${charlie.nick} (classe não escolhida) — líder (você)`,
+    );
     await expect(bravo.page.getByRole('heading', { name: /Sua party \(1\/4\)/ })).toBeVisible();
   });
 });
@@ -95,4 +101,46 @@ test('a second window of the same account takes over the party without a loop', 
   await first.page.getByRole('button', { name: 'Usar a party nesta janela' }).click();
   await expect(first.page.getByTestId('party-code')).toBeVisible();
   await expect(second.getByTestId('party-notice')).toHaveText(moved);
+});
+
+test('four players choose classes and everyone sees the current roster', async ({ browser }) => {
+  const players = [
+    await signUpInNewContext(browser, 'Classe_A'),
+    await signUpInNewContext(browser, 'Classe_B'),
+    await signUpInNewContext(browser, 'Classe_C'),
+    await signUpInNewContext(browser, 'Classe_D'),
+  ];
+  const [leader, ...guests] = players;
+  if (!leader) throw new Error('líder ausente');
+  const code = (await leader.page.getByTestId('party-code').textContent()) ?? '';
+  for (const guest of guests) {
+    await guest.page.getByLabel('Entrar em outra party (código)').fill(code);
+    await guest.page.getByRole('button', { name: 'Entrar', exact: true }).click();
+  }
+  for (const { page } of players) {
+    await expect(page.getByRole('heading', { name: /Sua party \(4\/4\)/ })).toBeVisible();
+  }
+
+  const choose = (index: number, name: string) =>
+    players[index]?.page.getByRole('radio', { name: new RegExp(`^${name}`) }).check();
+  await choose(0, 'Piloto');
+  await choose(1, 'Engenheiro');
+  await choose(2, 'Médico');
+  await choose(3, 'Piloto'); // repeated classes are allowed
+
+  const expectRoster = async (classes: string[]) => {
+    for (const { page } of players) {
+      const roster = page.getByTestId('party-members');
+      for (const [index, player] of players.entries()) {
+        await expect(roster).toContainText(`${player.nick} (${classes[index]})`);
+      }
+    }
+  };
+  await expectRoster(['Piloto', 'Engenheiro', 'Médico', 'Piloto']);
+
+  await choose(3, 'Oficial');
+  await expectRoster(['Piloto', 'Engenheiro', 'Médico', 'Oficial']);
+  const last = players[3];
+  if (!last) throw new Error('jogador ausente');
+  await expect(last.page.getByRole('radio', { name: /^Oficial/ })).toBeChecked();
 });

@@ -12,7 +12,9 @@ import {
   PartyServerMessage,
   partyInviteSchema,
   partyMemberTargetSchema,
+  partySelectClassSchema,
 } from '@orbit/contracts';
+import { isClassId } from '@orbit/catalog';
 import type { PartyDirectory, PartyRoomHandle } from '../modules/party/party-directory';
 import type { RoomTicket, RoomTicketStore } from '../modules/party/room-tickets';
 import { PartyMemberState, PartyState } from './party-schema';
@@ -83,6 +85,16 @@ export class PartyRoom
       if (!parsed.success)
         return this.#refuse(client, PartyClientMessage.Promote, PartyErrorCode.InvalidPayload);
       this.#promote(client, parsed.data.accountId);
+    });
+    this.onMessage(PartyClientMessage.SelectClass, (client: PartyClient, raw: unknown) => {
+      const action = PartyClientMessage.SelectClass;
+      const parsed = partySelectClassSchema.safeParse(raw);
+      if (!parsed.success) return this.#refuse(client, action, PartyErrorCode.InvalidPayload);
+      if (!isClassId(parsed.data.classId))
+        return this.#refuse(client, action, PartyErrorCode.UnknownClass);
+      // Each member chooses their own class; repeated classes are allowed.
+      const member = client.auth ? this.state.members.get(client.auth.accountId) : undefined;
+      if (member) member.classId = parsed.data.classId;
     });
     this.onMessage('*', (client: PartyClient, type) => {
       this.#refuse(client, String(type), PartyErrorCode.InvalidPayload);
