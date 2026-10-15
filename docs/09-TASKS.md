@@ -1,6 +1,6 @@
 # Backlog de desenvolvimento
 
-Todas as tarefas estão **pendentes**. IDs são estáveis e podem virar títulos de issues no GitHub. Cada task tem entrega, dependências e aceite; nenhuma foi executada apenas por este planejamento.
+As tarefas V01.01 a V01.09 tiveram o aceite verificado (issues #1 a #9 e PR #10 do GitHub); as demais estão **pendentes**. IDs são estáveis e são usados nos títulos das issues. Cada task tem entrega, dependências e aceite.
 
 P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PRs menores antes de começar. Tamanhos são relativos, sem promessa de horas ou datas. Os gates finais de cada versão são obrigatórios. Não declarar a release pronta só porque o código compila.
 
@@ -23,7 +23,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.01 — Preparar repositório e convenções
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** projeto. **Tamanho:** P. **Depende de:** nenhuma.
 
@@ -35,7 +35,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.02 — Criar workspace executável e travar ferramentas
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** build. **Tamanho:** M. **Depende de:** V01.01.
 
@@ -47,7 +47,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.03 — Definir catálogo, contratos e matemática básica
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** domínio. **Tamanho:** M. **Depende de:** V01.02.
 
@@ -59,7 +59,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.04 — Abrir sala autoritativa mínima
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** server. **Tamanho:** M. **Depende de:** V01.02, V01.03.
 
@@ -71,7 +71,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.05 — Renderizar nave e interior simples
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** client. **Tamanho:** M. **Depende de:** V01.02, V01.04.
 
@@ -83,7 +83,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.06 — Sincronizar movimento de tripulantes
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** network. **Tamanho:** M. **Depende de:** V01.03, V01.04, V01.05.
 
@@ -95,7 +95,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.07 — Pilotar nave no protótipo
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** gameplay. **Tamanho:** M. **Depende de:** V01.06.
 
@@ -107,7 +107,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.08 — Preparar banco, migrações e CI
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** data/build. **Tamanho:** M. **Depende de:** V01.02, V01.03.
 
@@ -119,7 +119,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.09 — Aprovar integração e gate 0.1
 
-- [ ] Pendente
+- [x] Concluída — gate verificado em 15/10/2026; tag `v0.1.0` somente após revisão e integração do PR
 
 **Área:** qualidade. **Tamanho:** M. **Depende de:** V01.07, V01.08.
 

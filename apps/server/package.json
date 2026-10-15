@@ -1,0 +1,26 @@
+{
+  "name": "@orbit/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc --noEmit -p tsconfig.json && node build.mjs"
+  },
+  "dependencies": {
+    "@colyseus/core": "0.18.18",
+    "@colyseus/schema": "5.0.39",
+    "@colyseus/ws-transport": "0.18.4",
+    "@orbit/catalog": "workspace:*",
+    "@orbit/contracts": "workspace:*",
+    "@orbit/simulation": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "0.18.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  }
+}

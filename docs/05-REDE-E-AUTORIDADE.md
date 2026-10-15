@@ -44,6 +44,36 @@ O cliente não envia posição final, dano, vida nova, saldo novo, conteúdo de 
 
 No protótipo, nomes de mensagens podem mudar; registrar contrato e versão quando adotados. Não considerar essa tabela uma API já implementada.
 
+### Contrato adotado na 0.1 (`protocolVersion` 1)
+
+Definido em `packages/contracts`. Schemas zod estritos: campo extra, `NaN`, infinito, sequência negativa ou fracionária e eixo fora de [-1, 1] são recusados.
+
+| Mensagem | Payload | Efeito no servidor |
+| --- | --- | --- |
+| `crew.input` | `{ seq, x, y }` | Direção no eixo local da nave; uma entrada efetiva por tick |
+| `ship.input` | `{ seq, thrust, turn }` | Aplicada somente do operador do comando |
+| `helm.request` | vazio | Assume o comando se estiver livre e o tripulante estiver a até 34 px do assento |
+| `helm.release` | vazio | Libera o comando do próprio operador |
+| `action.rejected` (servidor → cliente) | `{ action, code }` | Motivo da recusa: `invalid_payload`, `helm_occupied`, `helm_out_of_range`, `not_helm_operator` |
+
+Opções de entrada na sala: `{ protocolVersion, name? }`. O nome é só rótulo (3–20 caracteres `[A-Za-z0-9_]`), não identidade. O estado sincronizado (`SectorState`) contém versões de protocolo/catálogo, fase, tick, nave (posição, ângulo, velocidade, operador) e tripulantes (posição local, comando, conexão, último `seq` aplicado).
+
+Mensagens inválidas recebem `action.rejected`; 20 inválidas em 10 s encerram a conexão com código 4409, sem reserva de reconexão. Recusas legítimas (comando ocupado, longe do console) e `ship.input` de quem perdeu o comando não contam como abuso. Acima de 60 mensagens/s o Colyseus derruba a conexão. WebSocket com `maxPayload` de 4 KiB e até 4 jogadores por sala.
+
+## Resultado do spike 0.1
+
+Verificado com Colyseus 0.18 (core 0.18.18, schema 5.0.39, SDK 0.18.5) em testes de integração com clientes SDK reais e no teste com dois navegadores:
+
+- **Simulação:** `setFixedTimestep(step, 20)` avança um passo fixo de 50 ms; `patchRate` de 50 ms. A medição em teste fica entre 16 e 24 ticks por segundo.
+- **Validação:** `onMessage(tipo, schema, handler)` e `validate()` aceitam Standard Schema (zod 4), mas desconectam o cliente na primeira mensagem inválida. A sala valida manualmente com os parsers de `packages/contracts` para aplicar rejeição controlada e orçamento de abuso.
+- **Hook de autenticação:** `static onAuth(token, options, context)` roda na matchmaking HTTP, antes da reserva de assento, e é chamado sem `this`; o resultado chega em `client.auth`. O `onAuth` de instância é ignorado quando o estático existe. `context.headers` traz a Origin da requisição; `WebSocketTransport({ beforeUpgrade })` permite recusar a Origin também no upgrade.
+- **Estratégia de autenticação (0.2):** sessão por cookie HttpOnly nas rotas HTTP; uma rota autenticada emite ticket curto de uso único vinculado a usuário, party e expedição; o cliente o envia como token da matchmaking (`client.auth.token`, que o SDK manda no cabeçalho `Authorization`; conferido no código do SDK, ainda não exercitado), e o `static onAuth` valida e consome o ticket. O ticket não é guardado no navegador nem registrado em log. Na 0.1, a sala de desenvolvimento aceita qualquer jogador de origem permitida, sem identidade.
+- **Reconexão:** `onDrop` + `allowReconnection(client, 60)`; o SDK reconecta sozinho e `onReconnect` restaura o mesmo `sessionId`. O teste E2E corta as conexões TCP reais de um jogador num proxy, recusa novas conexões por 3 s e confirma a retomada com o mesmo tripulante, enquanto o outro navegador o vê como "reconectando". O SDK só tenta reconectar se a sala estiver aberta há alguns segundos (`minUptime`); antes disso a queda encerra a sessão. A emulação offline do Chromium fecha o socket na página, mas pode manter a conexão TCP local, e o servidor não percebe a queda; por isso não serve como teste de queda.
+- **Token na URL:** o SDK envia o token de autenticação também como `_authToken` na query string da URL do WebSocket. Proxy e logs de acesso não podem registrar query strings, e o ticket precisa ser curto e de uso único.
+- **Previsão disponível:** o SDK 0.18 exporta `Predict`, `Reconciler` e `SimReconciler`, e a sala oferece `defineInput`, `allowRewindState` e passos com `subSteps`. A 0.1 não usa esses recursos: entrada por mensagens, porta de entrada própria (`ContinuousInputGate`) e somente interpolação no cliente. Ao introduzir previsão, adotar um único mecanismo, avaliando primeiro o nativo e substituindo a porta própria se ele for usado (D17).
+- **Latência:** `server.simulateLatency(ms)` permitiu ensaiar 150 ms de RTT nos testes de integração, com estados idênticos nos dois clientes.
+- **Limites:** `maxClients`, `maxMessagesPerSecond` (desconecta ao exceder) e `maxPayload` do transporte estão configurados. Limite de conexões por IP/conta ainda não existe; depende de identidade (0.2) e do proxy (operação).
+
 ## Entrada, previsão e reconciliação
 
 Enviar entrada contínua no máximo à frequência do tick, inicialmente 20 mensagens/s por jogador, com sequência monotônica. Cada tick aplica uma entrada de movimento efetiva; receber 100 mensagens não pode produzir 100 passos. Limitar fila e descartar entradas vencidas, duplicadas ou muito à frente.

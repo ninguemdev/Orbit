@@ -1,0 +1,73 @@
+/**
+ * Migration smoke: creates a throwaway database, applies every migration to the
+ * empty database twice (idempotence), checks the schema, closes the pool and
+ * verifies that no connection was left open, then drops the database.
+ */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import pg from 'pg';
+import { MIGRATIONS_FOLDER, runMigrations } from '../src/migrate';
+import { createPool, readDatabaseUrl } from '../src/pool';
+
+const adminUrl = readDatabaseUrl();
+const databaseName = `orbit_smoke_${Date.now()}_${process.pid}`;
+const journal = JSON.parse(
+  readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'),
+) as {
+  entries: unknown[];
+};
+
+const admin = new pg.Client({ connectionString: adminUrl, application_name: 'orbit-smoke-admin' });
+await admin.connect();
+await admin.query(`CREATE DATABASE "${databaseName}"`);
+
+try {
+  const url = new URL(adminUrl);
+  url.pathname = `/${databaseName}`;
+  const pool = createPool({ connectionString: url.toString(), max: 2 });
+
+  await runMigrations(pool);
+  await runMigrations(pool);
+
+  const tables = await pool.query<{ table_name: string }>(
+    `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1`,
+  );
+  assert.deepEqual(
+    tables.rows.map((row) => row.table_name),
+    ['app_metadata'],
+  );
+  const applied = await pool.query<{ count: number }>(
+    'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
+  );
+  assert.equal(applied.rows[0]?.count, journal.entries.length, 'cada migração aplicada uma vez');
+
+  await pool.query(`INSERT INTO app_metadata (key, value) VALUES ('smoke', 'ok')`);
+  const roundTrip = await pool.query<{ value: string }>(
+    `SELECT value FROM app_metadata WHERE key = 'smoke'`,
+  );
+  assert.equal(roundTrip.rows[0]?.value, 'ok');
+
+  await pool.end();
+  assert.equal(pool.totalCount, 0, 'pool sem conexões após end()');
+
+  // The server may take a moment to reap backends after the clients disconnect.
+  let open = -1;
+  for (let attempt = 0; attempt < 20 && open !== 0; attempt++) {
+    const activity = await admin.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = $1',
+      [databaseName],
+    );
+    open = activity.rows[0]?.count ?? -1;
+    if (open !== 0) await sleep(100);
+  }
+  assert.equal(open, 0, 'nenhuma conexão aberta no banco de teste');
+
+  console.info(
+    `[database] smoke ok: ${journal.entries.length} migração(ões) em banco vazio, reaplicação idempotente, conexões encerradas`,
+  );
+} finally {
+  await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
+  await admin.end();
+}

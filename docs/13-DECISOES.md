@@ -19,6 +19,12 @@
 | D13 | Pg/Drizzle, estado de sala em memória e liquidação transacional | Base técnica | Volume, instrumentação e compatibilidade |
 | D14 | Compensação técnica devolve originais e não loot novo | Política operacional | Dados reais de incidentes |
 | D15 | PvP posterior não bloqueia 0.9/1.0 | Escopo solicitado | Definição da expansão |
+| D16 | TypeScript 6.0.x em vez de 7.0: typescript-eslint 8.71 aceita apenas `<6.1` | Adotada na 0.1 | Quando typescript-eslint suportar TS 7 |
+| D17 | 0.1 usa mensagens de intenção, porta de entrada própria e só interpolação; previsão nativa do Colyseus 0.18 (`defineInput`/`Predict`) fica para quando houver previsão, como mecanismo único | Adotada na 0.1 | Ao introduzir previsão do jogador local (boost na 0.4) |
+| D18 | Validação manual com zod nos handlers, não `validate()` do Colyseus, que desconecta na primeira mensagem inválida | Adotada na 0.1 | Se o Colyseus oferecer rejeição sem desconexão |
+| D19 | Respeitar o `minimumReleaseAge` do pnpm sem exceções; versões com menos de um dia esperam | Adotada na 0.1 | Correção de segurança que afete o projeto |
+| D20 | Sala de desenvolvimento anônima, com Origin e `protocolVersion` validados; contas e ticket de assento substituem na 0.2 | Temporária (0.1) | V02.02 |
+| D21 | Drizzle 0.45.4 + drizzle-kit 0.31.11 estáveis com `pg`; migração baseline `app_metadata` | Adotada na 0.1 | Ao migrar para Drizzle 1.0 estável |
 
 Quando modificar uma decisão, registrar motivação, nova regra e documentos/tarefas afetados. Não alterar silenciosamente números centrais como velocidade de boost ou elegibilidade de extração.
 

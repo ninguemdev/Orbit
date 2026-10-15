@@ -15,7 +15,7 @@ Escolha uma tarefa do [backlog](docs/09-TASKS.md), confira suas dependências e 
 
 Usar o template do repositório. Descrever problema, comportamento resultante, validação feita e riscos concretos. Informar o ID da tarefa. Um PR deve fechar uma unidade que possa ser revisada; separar mudanças independentes.
 
-Os scripts `lint`, `typecheck`, `test` e `build` serão criados em 0.1. Depois desse marco, precisam passar antes do merge. Testar transações, permissões, colisões, reconexão e o fluxo afetado. Mudanças de texto e visual de baixo impacto pedem inspeção apropriada, não testes que só reproduzem a implementação.
+Os scripts `lint`, `format:check`, `typecheck`, `test` e `build` precisam passar antes do merge (`pnpm check` executa todos); o CI repete esses passos, as migrações em PostgreSQL vazio e o teste multiplayer com dois navegadores. Testar transações, permissões, colisões, reconexão e o fluxo afetado. Mudanças de texto e visual de baixo impacto pedem inspeção apropriada, não testes que só reproduzem a implementação.
 
 ## Commits e versões
 

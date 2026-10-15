@@ -19,6 +19,27 @@ Consulta de referência: 14/10/2026. Phaser 4.2.1 aparece como release estável 
 
 Travar o lockfile, não depender de tags `latest` no deploy e atualizar dependências por PR pequeno com validação. A versão do jogo não é a versão das bibliotecas.
 
+### Versões verificadas na 0.1 (15/10/2026)
+
+Instaladas pelo `pnpm-lock.yaml` e exercitadas por build, testes de integração e teste com dois navegadores.
+
+| Componente | Versão | Observação |
+| --- | --- | --- |
+| Node.js | 24 LTS (24.18.0 no ambiente local) | `.node-version` e `engines` |
+| pnpm | 12.9.1 | `packageManager`; `minimumReleaseAge` padrão mantido, sem exceções |
+| TypeScript | 6.0.3 | 7.0 existe, mas typescript-eslint 8.71 aceita apenas `<6.1` (D16) |
+| Phaser | 4.2.1 | Importado como `import * as Phaser`; carregado sob demanda |
+| React / React DOM | 19.3.0 | 19.3.1 tinha menos de um dia e só altera Server Components |
+| Vite / plugin React | 8.3.4 / 6.1.2 | |
+| @colyseus/core / ws-transport | 0.18.18 / 0.18.4 | Sem o pacote agregador `colyseus` (Redis, monitor, playground) |
+| @colyseus/schema | 5.0.39 | API `schema()`/`t`, sem decorators; 5.0.40 tinha menos de um dia |
+| @colyseus/sdk | 0.18.5 | Mesmo SDK no navegador e nos testes de integração |
+| zod | 4.6.7 | Validação de mensagens em runtime |
+| PostgreSQL | 18.6 (imagem `postgres:18.6-alpine`) | Desenvolvimento e CI |
+| pg / drizzle-orm / drizzle-kit | 8.23.1 / 0.45.4 / 0.31.11 | Linha estável; a combinação funcionou, sem RC |
+| Vitest / Playwright | 5.0.4 / 1.64.0 | Playwright 1.64.1 tinha menos de um dia |
+| ESLint / typescript-eslint / Prettier | 10.12.0 / 8.71.2 / 3.9.10 | |
+
 ## Organização planejada
 
 | Caminho | Conteúdo |
@@ -39,7 +60,7 @@ Travar o lockfile, não depender de tags `latest` no deploy e atualizar dependê
 | `infra` | Dockerfiles, Compose, proxy e instruções de operação |
 | `docs` | Regras e documentação do produto |
 
-Os caminhos de código ainda serão criados; o pacote atual contém apenas documentos e templates.
+Na 0.1 existem `apps/web` (`ui`, `game`, `network`), `apps/server` (`transport`, `simulation`), os quatro pacotes, `tests/e2e` e `infra/compose.dev.yml`. `apps/server/src/modules`, `apps/server/src/infrastructure` e `tests/load` serão criados quando existirem casos de uso persistentes e ensaios de carga.
 
 ## Fronteiras de responsabilidade
 
