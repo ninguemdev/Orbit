@@ -10,6 +10,7 @@ import {
   type LoadoutRefusalBody,
   type LoadoutResponse,
   setLoadoutSchema,
+  emptyBodySchema,
   moveStashSchema,
   updateProfileSchema,
 } from '@orbit/contracts';
@@ -21,7 +22,7 @@ import {
   moveStashItem,
   postgresError,
 } from '@orbit/database';
-import { STASH_SLOTS } from '@orbit/catalog';
+import { SHIP_ORDER, STASH_SLOTS } from '@orbit/catalog';
 import type { LoadoutService } from '../../modules/loadout/loadout-service';
 import { clientAddressKey } from '../../infrastructure/client-address';
 import { OverloadedError } from '../../infrastructure/semaphore';
@@ -67,6 +68,12 @@ const STATUS: Record<string, number> = {
 };
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** Position in the catalog order; unknown ships go last. */
+function shipRank(shipId: string): number {
+  const index = (SHIP_ORDER as readonly string[]).indexOf(shipId);
+  return index === -1 ? SHIP_ORDER.length : index;
+}
 
 function fail(response: Response, code: AccountErrorCode): void {
   const body: AccountErrorBody = { error: code };
@@ -137,7 +144,10 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
 
   router.post(
     AccountRoute.MyRecoveryCode,
-    withSession(async (_request, response, session) => {
+    withSession(async (request, response, session) => {
+      if (!emptyBodySchema.safeParse(request.body).success) {
+        return fail(response, AccountErrorCode.InvalidInput);
+      }
       const body: RecoveryCodeResponse = {
         code: await identity.createRecoveryCode(session.accountId),
       };
@@ -198,7 +208,10 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
             quantity,
             reason,
           })),
-          ships: inventory.ships.map(({ shipId }) => ({ shipId })),
+          // Catalog order (the starter ship first), as in the party.
+          ships: inventory.ships
+            .map(({ shipId }) => ({ shipId }))
+            .sort((a, b) => shipRank(a.shipId) - shipRank(b.shipId)),
         };
         response.json(body);
       }),

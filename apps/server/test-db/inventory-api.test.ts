@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ItemId, STARTER_PACKAGE, STASH_SLOTS } from '@orbit/catalog';
 import { AccountRoute, type InventoryResponse } from '@orbit/contracts';
-import { grantItem } from '@orbit/database';
+import { grantItem, grantShipLicense } from '@orbit/database';
 import { DEFAULT_IDENTITY_POLICY } from '../src/modules/identity/identity-service';
 import { ALLOWED_ORIGIN, type ApiServer, call, startApiServer } from './api-harness';
 
@@ -54,6 +54,15 @@ describe('inventory API', () => {
       inbox: [],
       ships: [{ shipId: 'ship.scout' }],
     });
+  });
+
+  it('lists ship licenses in catalog order, the starter ship first', async () => {
+    const player = await signUp();
+    await grantShipLicense(api.db, player.id, 'ship.hauler', 'grant:test');
+    expect((await inventory(player.token)).ships).toEqual([
+      { shipId: 'ship.scout' },
+      { shipId: 'ship.hauler' },
+    ]);
   });
 
   it('keeps stash, credits and licenses across logout and login', async () => {

@@ -1,6 +1,7 @@
 /**
  * Development data: grants a fixed set of items to one account so preparation
- * screens can be exercised. Refused in production. Usage: pnpm db:seed-dev <nick>
+ * screens can be exercised, plus the hauler license unless --no-ships. Refused in
+ * production. Usage: pnpm db:seed-dev <nick> [--no-ships]
  */
 import { ItemId, ShipHullId } from '@orbit/catalog';
 import { createDatabase } from '../src/client';
@@ -21,9 +22,11 @@ if (process.env['NODE_ENV'] === 'production') {
   console.error('[seed-dev] recusado: NODE_ENV=production');
   process.exit(1);
 }
-const nick = process.argv.slice(2).find((arg) => arg !== '--');
+const args = process.argv.slice(2).filter((arg) => arg !== '--');
+const withShips = !args.includes('--no-ships');
+const nick = args.find((arg) => !arg.startsWith('--'));
 if (!nick) {
-  console.error('Uso: pnpm db:seed-dev <nick>');
+  console.error('Uso: pnpm db:seed-dev <nick> [--no-ships]');
   process.exit(1);
 }
 
@@ -44,8 +47,10 @@ try {
         reason: 'dados de desenvolvimento',
       });
     }
-    await grantShipLicense(db, account.id, ShipHullId.Hauler, 'grant:dev');
-    console.info(`[seed-dev] itens de teste e licença da Cargueira concedidos a ${account.nick}`);
+    if (withShips) await grantShipLicense(db, account.id, ShipHullId.Hauler, 'grant:dev');
+    console.info(
+      `[seed-dev] itens de teste${withShips ? ' e licença da Cargueira' : ''} concedidos a ${account.nick}`,
+    );
   }
 } finally {
   await pool.end();
