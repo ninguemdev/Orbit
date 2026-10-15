@@ -29,11 +29,19 @@ async function dropConnection(id: string, refuseMs: number) {
   return ((await response.json()) as { cut: number }).cut;
 }
 
+/** Creates a fresh account (the nick becomes the crew label) and enters the room. */
 async function joinAs(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 1100, height: 700 } });
   const page = await context.newPage();
   await page.goto('/?debug=1');
-  await page.getByLabel('Nome na tripulação (opcional)').fill(name);
+  const nick = `${name}_${Date.now().toString(36).slice(-6)}`;
+  const password = 'senha de teste longa';
+  await page.getByRole('button', { name: 'Criar conta' }).click();
+  const form = page.getByRole('form');
+  await form.locator('input[name="nick"]').fill(nick);
+  await form.locator('input[name="password"]').fill(password);
+  await form.locator('input[name="confirmation"]').fill(password);
+  await form.getByRole('button', { name: 'Criar conta' }).click();
   await page.getByRole('button', { name: 'Entrar na sala' }).click();
   await expect(page.getByTestId('connection-status')).toContainText('Conectado');
   await page.locator('canvas').waitFor();
@@ -96,12 +104,12 @@ async function walkToHelm(page: Page, id: string) {
     if (!member) throw new Error('tripulante ausente');
     return member;
   };
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     const { x, y } = await position();
-    if (Math.abs(y) <= 15 && x >= 100) return;
+    if (Math.abs(y) <= 20 && x >= 100) return;
     // Keep keyboard focus on the game in case anything moved it away.
     await page.locator('canvas').click({ position: { x: 20, y: 650 } });
-    if (Math.abs(y) > 15) {
+    if (Math.abs(y) > 20) {
       await holdUntil(page, y > 0 ? 'KeyW' : 'KeyS', async () => (await position()).y !== y);
     } else {
       await holdUntil(page, 'KeyD', async () => (await position()).x >= 100);
@@ -153,8 +161,8 @@ test('two browsers share the room, walk, and see the same ship being piloted', a
   await test.step('the first to reach the helm takes command', async () => {
     await walkToHelm(alfa, alfaId); // through the bridge doorway up to the console
     await alfa.keyboard.press('KeyE');
-    await expect(bravo.getByTestId('helm-operator')).toHaveText('Comando: Alfa');
-    await expect(alfa.getByTestId('helm-operator')).toHaveText('Comando: Alfa');
+    await expect(bravo.getByTestId('helm-operator')).toHaveText(/^Comando: Alfa_/);
+    await expect(alfa.getByTestId('helm-operator')).toHaveText(/^Comando: Alfa_/);
   });
 
   await test.step('the helm is exclusive', async () => {
@@ -185,7 +193,7 @@ test('two browsers share the room, walk, and see the same ship being piloted', a
     // Real TCP connections are cut and new ones refused for 3 s.
     expect(await dropConnection(alfaId, 3000)).toBeGreaterThan(0);
     await expect(alfa.getByTestId('connection-status')).toContainText('Reconectando');
-    await expect(bravo.getByTestId('hud')).toContainText('Alfa — reconectando');
+    await expect(bravo.getByTestId('hud')).toContainText(/Alfa_[A-Za-z0-9]+ — reconectando/);
     await expect(alfa.getByTestId('connection-status')).toContainText('Conectado', {
       timeout: 20_000,
     });
