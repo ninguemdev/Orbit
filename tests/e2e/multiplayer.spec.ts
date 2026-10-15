@@ -72,9 +72,23 @@ async function hold(page: Page, key: string, ms: number) {
   await page.keyboard.up(key);
 }
 
+/** Holds a key until the authoritative state satisfies `done`, then releases it. */
+async function holdUntil(page: Page, key: string, done: () => Promise<boolean>) {
+  await page.keyboard.down(key);
+  try {
+    const deadline = Date.now() + 4000;
+    while (!(await done()) && Date.now() < deadline) await page.waitForTimeout(15);
+  } finally {
+    await page.keyboard.up(key);
+  }
+  await page.waitForTimeout(400); // inputs go stale and the server stops the crew member
+}
+
 /**
- * Walks to the helm with the keyboard, correcting with the authoritative position
- * between short key presses (key timing in automation is not exact).
+ * Walks to the helm with the keyboard in closed loop on the authoritative position:
+ * key timing in automation (and frame rate on CI) is not exact. Vertical
+ * corrections release the key as soon as the server reports movement; the
+ * doorway admits |y| < 22, wider than one correction step.
  */
 async function walkToHelm(page: Page, id: string) {
   const position = async () => {
@@ -82,14 +96,22 @@ async function walkToHelm(page: Page, id: string) {
     if (!member) throw new Error('tripulante ausente');
     return member;
   };
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     const { x, y } = await position();
-    if (Math.abs(y) <= 8 && x >= 105) return;
-    const key = Math.abs(y) > 8 ? (y > 0 ? 'KeyW' : 'KeyS') : 'KeyD';
-    await hold(page, key, Math.abs(y) > 8 ? 60 : 400);
-    await page.waitForTimeout(400); // let the input go stale and the state settle
+    if (Math.abs(y) <= 15 && x >= 100) return;
+    // Keep keyboard focus on the game in case anything moved it away.
+    await page.locator('canvas').click({ position: { x: 20, y: 650 } });
+    if (Math.abs(y) > 15) {
+      await holdUntil(page, y > 0 ? 'KeyW' : 'KeyS', async () => (await position()).y !== y);
+    } else {
+      await holdUntil(page, 'KeyD', async () => (await position()).x >= 100);
+    }
   }
-  throw new Error(`não chegou ao console: ${JSON.stringify(await position())}`);
+  const status = await page.evaluate(() => window.__orbit?.status);
+  const tick = (await world(page)).tick;
+  throw new Error(
+    `não chegou ao console: ${JSON.stringify(await position())} status=${status} tick=${tick}`,
+  );
 }
 
 /** Both pages have received at least the same tick; returns their views of it. */

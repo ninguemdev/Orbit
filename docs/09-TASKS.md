@@ -119,7 +119,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V01.09 — Aprovar integração e gate 0.1
 
-- [x] Concluída — gate verificado em 15/10/2026; tag `v0.1.0` somente após revisão e integração do PR
+- [x] Concluída — gate verificado e integrado em 15/10/2026 (PR #10); release `v0.1.0`
 
 **Área:** qualidade. **Tamanho:** M. **Depende de:** V01.07, V01.08.
 

@@ -1,10 +1,14 @@
 # Changelog
 
-O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 são planejados. A 0.1.0 está em revisão e ainda não tem tag.
+O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 são planejados; cada versão recebe tag quando seu gate é aprovado.
 
 ## Unreleased
 
-Conteúdo previsto para a 0.1.0, em revisão.
+Nada ainda.
+
+## 0.1.0 — 2026-10-15
+
+Fundação técnica e primeiro multiplayer real. Protótipo de desenvolvimento: sem contas, inventário, loot ou extração.
 
 ### Adicionado
 
@@ -19,5 +23,12 @@ Conteúdo previsto para a 0.1.0, em revisão.
 - Planejamento do jogo, arquitetura e critérios de aceite.
 - Roadmap e backlog de desenvolvimento de 0.1 a 1.0.
 - Política de contribuição, testes, operação e licença MIT.
+
+### Limitações conhecidas
+
+- Sala anônima de desenvolvimento, até 4 tripulantes; uma quinta pessoa cria outra sala.
+- Sem previsão do jogador local; quem cai ou fecha a aba aparece como "reconectando" por 60 s.
+- Um setor e um casco, sem dano, boost, EVA ou combate; o servidor de jogo não usa o banco.
+- Sem deploy, HTTPS ou limite de conexões por IP/conta.
 
 Ao implementar, registrar o comportamento entregue, as correções e os impactos de migração. Criar uma seção datada somente quando a release realmente for preparada.
