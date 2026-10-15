@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { type AppearanceColorId, isAppearanceColorId } from '@orbit/catalog';
 import { nickSchema, normalizeNick } from '@orbit/contracts';
 import { type Database, isUniqueViolation } from '../client';
+import { grantStarterPackage } from '../inventory/inventory';
 import { accounts, profiles } from '../schema';
 
 export interface NewAccount {
@@ -16,7 +17,7 @@ export type CreateAccountResult =
   | { readonly ok: false; readonly code: 'nick_taken' | 'invalid_nick' };
 
 /**
- * Creates the account and its profile atomically. A nick that differs only in
+ * Creates the account, its profile and the starter package atomically. A nick that differs only in
  * case from an existing one is refused by the unique index, also under concurrency.
  */
 export async function createAccount(db: Database, input: NewAccount): Promise<CreateAccountResult> {
@@ -40,6 +41,7 @@ export async function createAccount(db: Database, input: NewAccount): Promise<Cr
         .returning({ id: accounts.id });
       if (!account) throw new Error('Conta não criada');
       await tx.insert(profiles).values({ accountId: account.id, colorId: input.colorId });
+      await grantStarterPackage(tx, account.id);
       return { ok: true as const, accountId: account.id };
     });
   } catch (error) {

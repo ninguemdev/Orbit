@@ -25,6 +25,11 @@ test('signs up, signs out, logs in and recovers an account with a one-time code'
     await expect(page.getByTestId('signed-in-as')).toContainText(nick);
   });
 
+  await test.step('a new account starts with credits and the scout license', async () => {
+    await expect(page.getByTestId('credits')).toHaveText('Créditos: 200');
+    await expect(page.getByTestId('ships')).toHaveText('Naves liberadas: Batedora');
+  });
+
   let code = '';
   await test.step('the optional recovery code is shown once', async () => {
     await expect(page.getByText(/Quer gerar um código de recuperação/)).toBeVisible();
@@ -58,6 +63,8 @@ test('signs up, signs out, logs in and recovers an account with a one-time code'
     await expect(page.getByTestId('signed-in-as')).toContainText(nick);
     await page.reload();
     await expect(page.getByTestId('signed-in-as')).toContainText(nick);
+    await expect(page.getByTestId('credits')).toHaveText('Créditos: 200');
+    await expect(page.getByTestId('ships')).toHaveText('Naves liberadas: Batedora');
     await page.getByRole('button', { name: 'Sair da conta' }).click();
   });
 

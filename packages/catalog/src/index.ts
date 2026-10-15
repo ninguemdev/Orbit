@@ -168,6 +168,10 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
   },
 };
 
+export function isShipHullId(value: string): value is ShipHullId {
+  return Object.hasOwn(SHIP_HULLS, value);
+}
+
 export interface SectorDefinition {
   readonly id: string;
   readonly bounds: Rect;
@@ -199,3 +203,4 @@ export const SECTORS: Readonly<Record<SectorId, SectorDefinition>> = {
     shipSpawn: { position: { x: 0, y: 0 }, angle: 0 },
   },
 };
+export * from './items';

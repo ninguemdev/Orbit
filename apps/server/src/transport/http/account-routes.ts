@@ -6,9 +6,18 @@ import {
   PartyRoute,
   type RecoveryCodeResponse,
   SESSION_COOKIE,
+  type InventoryResponse,
+  moveStashSchema,
   updateProfileSchema,
 } from '@orbit/contracts';
-import { type ActiveSession, postgresError } from '@orbit/database';
+import {
+  type ActiveSession,
+  type Database,
+  getInventory,
+  moveStashItem,
+  postgresError,
+} from '@orbit/database';
+import { STASH_SLOTS } from '@orbit/catalog';
 import { clientAddressKey } from '../../infrastructure/client-address';
 import { OverloadedError } from '../../infrastructure/semaphore';
 import type { PartyAccess } from '../../modules/party/party-access';
@@ -26,6 +35,8 @@ export interface AccountApiOptions {
   readonly cookie: CookieOptions;
   /** Party room tickets; omitted by servers without parties. */
   readonly party?: PartyAccess;
+  /** Inventory reads and stash moves; omitted by servers without inventory routes. */
+  readonly db?: Database;
   readonly now?: () => Date;
 }
 
@@ -40,6 +51,8 @@ const STATUS: Record<string, number> = {
   [AccountErrorCode.InviteNotFound]: 404,
   [AccountErrorCode.NickTaken]: 409,
   [AccountErrorCode.PartyFull]: 409,
+  [AccountErrorCode.EmptySlot]: 409,
+  [AccountErrorCode.InvalidSlot]: 400,
   [AccountErrorCode.UnsupportedMediaType]: 415,
   [AccountErrorCode.RateLimited]: 429,
   [AccountErrorCode.Overloaded]: 503,
@@ -153,6 +166,53 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
       response.json(result);
     }),
   );
+
+  const { db } = options;
+  if (db) {
+    // Every inventory route acts on the account of the session; no route takes an
+    // account ID from the client.
+    router.get(
+      AccountRoute.MyInventory,
+      withSession(async (_request, response, session) => {
+        const inventory = await getInventory(db, session.accountId);
+        const body: InventoryResponse = {
+          credits: inventory.credits,
+          stashCapacity: STASH_SLOTS,
+          stash: inventory.stash.map(({ slot, instanceId, itemId, quantity }) => ({
+            slot,
+            instanceId,
+            itemId,
+            quantity,
+          })),
+          inbox: inventory.inbox.map(({ entryId, itemId, quantity, reason }) => ({
+            entryId,
+            itemId,
+            quantity,
+            reason,
+          })),
+          ships: inventory.ships.map(({ shipId }) => ({ shipId })),
+        };
+        response.json(body);
+      }),
+    );
+    router.post(
+      AccountRoute.MyStashMove,
+      withSession(async (request, response, session) => {
+        const parsed = moveStashSchema.safeParse(request.body);
+        if (!parsed.success) return fail(response, AccountErrorCode.InvalidInput);
+        const moved = await moveStashItem(
+          db,
+          session.accountId,
+          parsed.data.fromSlot,
+          parsed.data.toSlot,
+        );
+        if (moved === 'no_account') return fail(response, AccountErrorCode.Unauthenticated);
+        if (moved === 'empty_slot') return fail(response, AccountErrorCode.EmptySlot);
+        if (moved === 'invalid_slot') return fail(response, AccountErrorCode.InvalidSlot);
+        response.status(204).end();
+      }),
+    );
+  }
 
   const { party } = options;
   if (party) {

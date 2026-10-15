@@ -9,6 +9,8 @@ export const AccountRoute = {
   Me: '/api/me',
   MyProfile: '/api/me/profile',
   MyRecoveryCode: '/api/me/recovery-code',
+  MyInventory: '/api/me/inventory',
+  MyStashMove: '/api/me/stash/move',
   Recovery: '/api/recovery',
 } as const;
 
@@ -31,6 +33,8 @@ export const AccountErrorCode = {
   InviteNotFound: 'invite_not_found',
   PartyFull: 'party_full',
   RemovedFromParty: 'removed_from_party',
+  EmptySlot: 'empty_slot',
+  InvalidSlot: 'invalid_slot',
 } as const;
 export type AccountErrorCode = (typeof AccountErrorCode)[keyof typeof AccountErrorCode];
 
@@ -48,6 +52,30 @@ export const loginSchema = z.strictObject({
 });
 
 export const updateProfileSchema = z.strictObject({ colorId: z.string().max(64) });
+
+export const moveStashSchema = z.strictObject({
+  fromSlot: z.int().min(0).max(1000),
+  toSlot: z.int().min(0).max(1000),
+});
+
+/** Inventory of the session's account; item names and rules come from the catalog. */
+export interface InventoryResponse {
+  readonly credits: number;
+  readonly stashCapacity: number;
+  readonly stash: readonly {
+    readonly slot: number;
+    readonly instanceId: string;
+    readonly itemId: string;
+    readonly quantity: number;
+  }[];
+  readonly inbox: readonly {
+    readonly entryId: string;
+    readonly itemId: string;
+    readonly quantity: number;
+    readonly reason: string;
+  }[];
+  readonly ships: readonly { readonly shipId: string }[];
+}
 
 export const recoverySchema = z.strictObject({
   nick: z.string().min(1).max(64),

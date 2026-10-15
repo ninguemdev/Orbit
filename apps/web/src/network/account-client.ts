@@ -1,5 +1,6 @@
 import {
   type AccountErrorBody,
+  type InventoryResponse,
   AccountErrorCode,
   AccountRoute,
   type MeResponse,
@@ -52,6 +53,7 @@ async function withRetry<T>(read: () => Promise<ApiResult<T>>, retries = 2): Pro
 
 export const accountClient = {
   me: () => withRetry(() => requestJson<MeResponse>(AccountRoute.Me, 'GET')),
+  inventory: () => withRetry(() => requestJson<InventoryResponse>(AccountRoute.MyInventory, 'GET')),
   signUp: (nick: string, password: string) =>
     requestJson<MeResponse>(AccountRoute.Accounts, 'POST', { nick, password }),
   login: (nick: string, password: string) =>
@@ -93,6 +95,10 @@ export function describeAccountError(code: ClientErrorCode): string {
       return 'Esse convite expirou ou já foi usado.';
     case 'party_full':
       return 'A party já está completa.';
+    case 'empty_slot':
+      return 'Esse espaço do stash está vazio.';
+    case 'invalid_slot':
+      return 'Espaço do stash inválido.';
     case 'removed_from_party':
       return 'O líder removeu você desta party. Para voltar, peça um novo convite.';
   }

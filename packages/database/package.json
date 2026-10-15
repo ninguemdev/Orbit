@@ -11,7 +11,8 @@
     "build": "tsc --noEmit -p tsconfig.json",
     "generate": "drizzle-kit generate",
     "migrate": "tsx --env-file-if-exists=../../.env scripts/migrate.ts",
-    "smoke": "tsx --env-file-if-exists=../../.env scripts/smoke.ts"
+    "smoke": "tsx --env-file-if-exists=../../.env scripts/smoke.ts",
+    "seed:dev": "tsx --env-file-if-exists=../../.env scripts/seed-dev.ts"
   },
   "dependencies": {
     "@orbit/catalog": "workspace:*",

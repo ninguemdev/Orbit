@@ -1,5 +1,18 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  check,
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 /**
  * Installation metadata (schema baseline, catalog version in use). Account,
@@ -105,5 +118,118 @@ export const profiles = pgTable(
   (table) => [
     check('profiles_color_id_format', sql`${table.colorId} ~ '^appearance\\.color\\.[a-z]+$'`),
     check('profiles_class_id_format', sql`${table.classId} ~ '^class\\.[a-z]+$'`),
+  ],
+);
+
+/** Credits of an account. Integer, never negative. */
+export const wallets = pgTable(
+  'wallets',
+  {
+    accountId: uuid('account_id')
+      .primaryKey()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    credits: bigint('credits', { mode: 'number' }).notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (table) => [check('wallets_credits_not_negative', sql`${table.credits} >= 0`)],
+);
+
+/**
+ * Every owned item, unique or a stack. `location` says where it is; the slot and
+ * inbox tables point to it through composite keys that include owner and location,
+ * so an item can only sit in its owner's stash or inbox, and in one place at a time.
+ */
+export const itemInstances = pgTable(
+  'item_instances',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    itemId: text('item_id').notNull(),
+    ownerAccountId: uuid('owner_account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    quantity: integer('quantity').notNull(),
+    /** Wear for future equipment; null for items without durability. */
+    durability: integer('durability'),
+    /** Provenance, e.g. `grant:starter`, `grant:dev`, later `expedition:<id>`. */
+    origin: text('origin').notNull(),
+    location: text('location').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique('item_instances_id_owner_location').on(table.id, table.ownerAccountId, table.location),
+    index('item_instances_owner_idx').on(table.ownerAccountId),
+    check('item_instances_item_id_format', sql`${table.itemId} ~ '^item\\.[a-z0-9_.]+$'`),
+    check('item_instances_quantity_positive', sql`${table.quantity} > 0`),
+    check(
+      'item_instances_durability_range',
+      sql`${table.durability} IS NULL OR ${table.durability} BETWEEN 0 AND 100`,
+    ),
+    check('item_instances_location_known', sql`${table.location} IN ('stash', 'inbox')`),
+  ],
+);
+
+/** Stash positions. One item per slot and one slot per item. */
+export const inventorySlots = pgTable(
+  'inventory_slots',
+  {
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    slot: integer('slot').notNull(),
+    itemInstanceId: uuid('item_instance_id').notNull(),
+    location: text('location').notNull().default('stash'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.accountId, table.slot] }),
+    uniqueIndex('inventory_slots_item_key').on(table.itemInstanceId),
+    foreignKey({
+      name: 'inventory_slots_item_owned_in_stash',
+      columns: [table.itemInstanceId, table.accountId, table.location],
+      foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
+    }).onDelete('cascade'),
+    check('inventory_slots_slot_range', sql`${table.slot} >= 0`),
+    check('inventory_slots_location_stash', sql`${table.location} = 'stash'`),
+  ],
+);
+
+/** Items received without room in the stash. Nothing confirmed is ever discarded. */
+export const inboxEntries = pgTable(
+  'inbox_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    itemInstanceId: uuid('item_instance_id').notNull(),
+    location: text('location').notNull().default('inbox'),
+    reason: text('reason').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('inbox_entries_item_key').on(table.itemInstanceId),
+    index('inbox_entries_account_idx').on(table.accountId),
+    foreignKey({
+      name: 'inbox_entries_item_owned_in_inbox',
+      columns: [table.itemInstanceId, table.accountId, table.location],
+      foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
+    }).onDelete('cascade'),
+    check('inbox_entries_location_inbox', sql`${table.location} = 'inbox'`),
+  ],
+);
+
+/** Ship licenses. Not consumed or lost when a ship is destroyed (D04). */
+export const shipUnlocks = pgTable(
+  'ship_unlocks',
+  {
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    shipId: text('ship_id').notNull(),
+    source: text('source').notNull(),
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.accountId, table.shipId] }),
+    check('ship_unlocks_ship_id_format', sql`${table.shipId} ~ '^ship\\.[a-z0-9_]+$'`),
   ],
 );

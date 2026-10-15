@@ -193,7 +193,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.06 — Persistir stash, carteira e licenças básicas
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** data. **Tamanho:** M. **Depende de:** V02.01.
 

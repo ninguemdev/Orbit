@@ -11,6 +11,7 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 - Telas de acesso no cliente: criar conta (só nick e senha, sem e-mail), entrar, sair e recuperar acesso com código opcional de uso único, gerado após o cadastro e mostrado uma vez.
 - Party de até 4 contas: cada jogador começa numa party solo com código de convite, entra em outra pelo código ou aceitando convite por nick online. O líder remove membros e passa a liderança, e a saída do líder promove o membro mais antigo. A entrada exige ticket de uso único emitido pela API.
 - Escolha de classe por jogador na party (repetição permitida), salva no perfil da conta (migração `0003_profile_class`), com roster visível a todos e descrição honesta de quando cada efeito entra no jogo.
+- Inventário persistente: carteira com 200 créditos iniciais, licença da Batedora, stash de 40 espaços com pilhas pelo catálogo e caixa de recebimento para o excedente; painel de inventário no menu; `pnpm db:seed-dev` para dados de teste.
 
 ### Corrigido
 
