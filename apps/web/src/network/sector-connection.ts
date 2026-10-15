@@ -1,12 +1,15 @@
 import { Client, type Room } from '@colyseus/sdk';
 import {
+  type ActionRejectedPayload,
   ClientMessage,
   DEV_ROOM_NAME,
   INPUT_SEND_RATE_HZ,
   INTERPOLATION_DELAY_MS,
   PROTOCOL_VERSION,
+  ServerMessage,
   type CrewInput,
   type SectorStateView,
+  type ShipInput,
 } from '@orbit/contracts';
 import { SnapshotBuffer } from './snapshot-buffer';
 import { type WorldSnapshot, snapshotFromState } from './world-snapshot';
@@ -19,6 +22,17 @@ export interface MoveIntent {
   readonly y: number;
 }
 
+/** Helm controls: thrust and turn in [-1, 1]. */
+export interface HelmIntent {
+  readonly thrust: number;
+  readonly turn: number;
+}
+
+export interface Notice {
+  readonly code: string;
+  readonly at: number;
+}
+
 /** What the Phaser scene and the HUD may read or ask; they never touch the SDK. */
 export interface SectorBridge {
   readonly sessionId: string;
@@ -29,6 +43,13 @@ export interface SectorBridge {
   latest(): WorldSnapshot | null;
   /** Continuous movement intent; sent at the input rate, never as a position. */
   setMoveIntent(intent: MoveIntent): void;
+  /** Continuous helm intent; only used while this player is the operator. */
+  setHelmIntent(intent: HelmIntent): void;
+  /** Requests the helm, or releases it when already the operator. */
+  toggleHelm(): void;
+  releaseHelm(): void;
+  /** Last refusal received from the server, for the HUD. */
+  readonly lastNotice: Notice | null;
 }
 
 export function defaultServerEndpoint(): string {
@@ -38,6 +59,7 @@ export function defaultServerEndpoint(): string {
 
 const PING_INTERVAL_MS = 2000;
 const NEUTRAL: MoveIntent = Object.freeze({ x: 0, y: 0 });
+const NEUTRAL_HELM: HelmIntent = Object.freeze({ thrust: 0, turn: 0 });
 
 export class SectorConnection implements SectorBridge {
   readonly #room: Room<unknown, SectorStateView>;
@@ -45,8 +67,12 @@ export class SectorConnection implements SectorBridge {
   #status: ConnectionStatus = 'connected';
   #pingMs: number | null = null;
   #intent: MoveIntent = NEUTRAL;
+  #helmIntent: HelmIntent = NEUTRAL_HELM;
   #neutralSent = true;
+  #helmNeutralSent = true;
   #seq = 0;
+  #helmSeq = 0;
+  #lastNotice: Notice | null = null;
   readonly #timers: ReturnType<typeof setInterval>[];
   readonly #statusListeners = new Set<(status: ConnectionStatus) => void>();
 
@@ -56,6 +82,9 @@ export class SectorConnection implements SectorBridge {
     room.onDrop(() => this.#setStatus('reconnecting'));
     room.onReconnect(() => this.#setStatus('connected'));
     room.onLeave(() => this.#setStatus('disconnected'));
+    room.onMessage(ServerMessage.ActionRejected, (payload: ActionRejectedPayload) => {
+      this.#lastNotice = { code: payload.code, at: performance.now() };
+    });
     this.#timers = [
       setInterval(() => room.ping((ms) => (this.#pingMs = ms)), PING_INTERVAL_MS),
       setInterval(() => this.#flushInput(), 1000 / INPUT_SEND_RATE_HZ),
@@ -99,6 +128,29 @@ export class SectorConnection implements SectorBridge {
     this.#intent = intent;
   }
 
+  setHelmIntent(intent: HelmIntent): void {
+    this.#helmIntent = intent;
+  }
+
+  get lastNotice(): Notice | null {
+    return this.#lastNotice;
+  }
+
+  get isOperator(): boolean {
+    return this.latest()?.ship.operatorId === this.sessionId;
+  }
+
+  toggleHelm(): void {
+    if (this.#status !== 'connected') return;
+    if (this.isOperator) this.releaseHelm();
+    else this.#room.send(ClientMessage.HelmRequest);
+  }
+
+  releaseHelm(): void {
+    if (this.#status !== 'connected' || !this.isOperator) return;
+    this.#room.send(ClientMessage.HelmRelease);
+  }
+
   onStatus(listener: (status: ConnectionStatus) => void): () => void {
     this.#statusListeners.add(listener);
     return () => this.#statusListeners.delete(listener);
@@ -111,10 +163,15 @@ export class SectorConnection implements SectorBridge {
 
   /**
    * Sends the current intent at most INPUT_SEND_RATE_HZ times per second. Idle
-   * players send a single neutral input and then stay silent.
+   * players send a single neutral input and then stay silent. The operator sends
+   * helm input instead of walking.
    */
   #flushInput(): void {
     if (this.#status !== 'connected') return;
+    if (this.isOperator) {
+      this.#flushHelm();
+      return;
+    }
     const { x, y } = this.#intent;
     const idle = x === 0 && y === 0;
     if (idle && this.#neutralSent) return;
@@ -123,14 +180,32 @@ export class SectorConnection implements SectorBridge {
     this.#neutralSent = idle;
   }
 
+  #flushHelm(): void {
+    const { thrust, turn } = this.#helmIntent;
+    const idle = thrust === 0 && turn === 0;
+    if (idle && this.#helmNeutralSent) return;
+    const input: ShipInput = { seq: this.#helmSeq++, thrust, turn };
+    this.#room.send(ClientMessage.ShipInput, input);
+    this.#helmNeutralSent = idle;
+  }
+
   #record(state: SectorStateView): void {
+    const wasOperator = this.isOperator;
     if (!state.ship || !state.crew) return;
     this.#snapshots.push(snapshotFromState(state, performance.now()));
+    // The server numbers each operator's helm inputs from scratch.
+    if (!wasOperator && this.isOperator) {
+      this.#helmSeq = 0;
+      this.#helmNeutralSent = true;
+    }
   }
 
   #setStatus(status: ConnectionStatus): void {
     this.#status = status;
-    if (status !== 'connected') this.#intent = NEUTRAL;
+    if (status !== 'connected') {
+      this.#intent = NEUTRAL;
+      this.#helmIntent = NEUTRAL_HELM;
+    }
     for (const listener of this.#statusListeners) listener(status);
   }
 }

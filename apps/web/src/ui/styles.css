@@ -100,3 +100,7 @@ button:disabled {
   justify-content: space-between;
   gap: 0.5rem;
 }
+
+.notice {
+  color: #ffc857;
+}

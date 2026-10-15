@@ -13,6 +13,7 @@ import {
   type TestServer,
   crewSnapshot,
   joinDevRoom,
+  safeLeave,
   sleep,
   startTestServer,
   waitFor,
@@ -42,7 +43,7 @@ describe('crew movement over the network', () => {
   });
 
   afterEach(async () => {
-    await Promise.all(rooms.map((room) => room.leave().catch(() => undefined)));
+    await Promise.all(rooms.map(safeLeave));
     rooms = [];
     server.server.simulateLatency(0);
   });

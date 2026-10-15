@@ -76,6 +76,9 @@ export class SectorScene extends Phaser.Scene {
       this.#stars.setSize(size.width, size.height);
     });
     this.#controls = new KeyboardControls(this);
+    const { KeyCodes } = Phaser.Input.Keyboard;
+    this.#controls.onPress(KeyCodes.E, () => this.#bridge.toggleHelm());
+    this.#controls.onPress(KeyCodes.ESC, () => this.#bridge.releaseHelm());
   }
 
   override update(time: number): void {
@@ -97,12 +100,20 @@ export class SectorScene extends Phaser.Scene {
   }
 
   /**
-   * Converts screen-space keys into the ship's local axes (the camera does not rotate
-   * with the ship). Only a direction is sent; the server decides the position.
+   * At the helm, W/S are thrust and A/D turn. Walking, screen-space keys become the
+   * ship's local axes (the camera does not rotate with the ship). Only intents are
+   * sent; the server decides positions.
    */
   #sendIntent(): void {
-    const angle = this.#bridge.latest()?.ship.angle ?? 0;
-    this.#bridge.setMoveIntent(rotate(this.#controls.axes(), -angle));
+    const latest = this.#bridge.latest();
+    const axes = this.#controls.axes();
+    if (latest?.ship.operatorId === this.#bridge.sessionId) {
+      this.#bridge.setMoveIntent({ x: 0, y: 0 });
+      this.#bridge.setHelmIntent({ thrust: -axes.y, turn: axes.x });
+      return;
+    }
+    this.#bridge.setHelmIntent({ thrust: 0, turn: 0 });
+    this.#bridge.setMoveIntent(rotate(axes, -(latest?.ship.angle ?? 0)));
   }
 
   #createStarTexture(): void {
@@ -183,7 +194,7 @@ export class SectorScene extends Phaser.Scene {
       const world = rotate({ x: member.x, y: member.y }, angle);
       view.label
         .setPosition(shipX + world.x, shipY + world.y - CREW.radius - 6)
-        .setText(member.atHelm ? `${member.name} ⎈` : member.name)
+        .setText(member.atHelm ? `${member.name} (comando)` : member.name)
         .setAlpha(member.connected ? 1 : 0.5);
     }
   }

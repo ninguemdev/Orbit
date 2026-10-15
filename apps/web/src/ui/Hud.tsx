@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import type { SectorBridge } from '../network/sector-connection';
 
 const HUD_REFRESH_MS = 200;
+const NOTICE_VISIBLE_MS = 3000;
+
+const NOTICE_TEXT: Record<string, string> = {
+  helm_occupied: 'O comando já está ocupado.',
+  helm_out_of_range: 'Aproxime-se do console de comando (círculo amarelo).',
+  not_helm_operator: 'Você não está no comando.',
+  invalid_payload: 'Ação recusada pelo servidor.',
+};
 
 interface HudState {
   readonly status: string;
@@ -14,6 +22,7 @@ interface HudState {
     self: boolean;
   }[];
   readonly operator: string | null;
+  readonly notice: string | null;
 }
 
 function readHud(bridge: SectorBridge): HudState {
@@ -29,7 +38,12 @@ function readHud(bridge: SectorBridge): HudState {
     : [];
   const operatorId = snapshot?.ship.operatorId;
   const operator = operatorId ? (snapshot?.crew.get(operatorId)?.name ?? null) : null;
-  return { status: bridge.status, ping: bridge.pingMs, crew, operator };
+  const notice = bridge.lastNotice;
+  const noticeText =
+    notice && performance.now() - notice.at < NOTICE_VISIBLE_MS
+      ? (NOTICE_TEXT[notice.code] ?? 'Ação recusada.')
+      : null;
+  return { status: bridge.status, ping: bridge.pingMs, crew, operator, notice: noticeText };
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -71,7 +85,15 @@ export function Hud({ bridge, economy, onToggleEconomy, onLeave }: HudProps) {
           </li>
         ))}
       </ul>
-      <p className="controls">WASD mover · E assumir/sair do comando · Esc sair do comando</p>
+      {hud.notice ? (
+        <p role="status" className="notice">
+          {hud.notice}
+        </p>
+      ) : null}
+      <p className="controls">
+        WASD mover · E assumir/sair do comando · No comando: W/S acelerar/frear, A/D girar · Esc
+        sair do comando
+      </p>
       <div className="hud-actions">
         <label>
           <input type="checkbox" checked={economy} onChange={onToggleEconomy} /> Modo econômico (30

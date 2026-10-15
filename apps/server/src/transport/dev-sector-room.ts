@@ -12,6 +12,8 @@ import {
   TICK_RATE_HZ,
   type JoinOptions,
   parseCrewInput,
+  parseEmptyPayload,
+  parseShipInput,
 } from '@orbit/contracts';
 import { SectorSimulation } from '../simulation/sector-simulation';
 import { type AccessPolicy, decideJoin } from './access-policy';
@@ -76,12 +78,32 @@ export class DevSectorRoom extends Room<{
 
     this.onMessage(ClientMessage.CrewInput, (client, raw: unknown) => {
       const parsed = parseCrewInput(raw);
-      if (!parsed.ok) return this.reject(client, ClientMessage.CrewInput, parsed.code);
+      if (!parsed.ok) return this.rejectInvalid(client, ClientMessage.CrewInput, parsed.code);
       // Duplicates and reordering are dropped silently: they are normal on reconnection.
       this.simulation.offerCrewInput(client.sessionId, parsed.value, this.now());
     });
+    this.onMessage(ClientMessage.ShipInput, (client, raw: unknown) => {
+      const parsed = parseShipInput(raw);
+      if (!parsed.ok) return this.rejectInvalid(client, ClientMessage.ShipInput, parsed.code);
+      // Inputs still in flight after losing the helm are expected and simply ignored.
+      this.simulation.offerShipInput(client.sessionId, parsed.value, this.now());
+    });
+    this.onMessage(ClientMessage.HelmRequest, (client, raw: unknown) => {
+      const parsed = parseEmptyPayload(raw);
+      if (!parsed.ok) return this.rejectInvalid(client, ClientMessage.HelmRequest, parsed.code);
+      const result = this.simulation.requestHelm(client.sessionId);
+      if (!result.ok) this.notifyRefusal(client, ClientMessage.HelmRequest, result.code);
+      this.syncState();
+    });
+    this.onMessage(ClientMessage.HelmRelease, (client, raw: unknown) => {
+      const parsed = parseEmptyPayload(raw);
+      if (!parsed.ok) return this.rejectInvalid(client, ClientMessage.HelmRelease, parsed.code);
+      const result = this.simulation.releaseHelm(client.sessionId);
+      if (!result.ok) this.notifyRefusal(client, ClientMessage.HelmRelease, result.code);
+      this.syncState();
+    });
     this.onMessage('*', (client, type) => {
-      this.reject(client, String(type), ErrorCode.InvalidPayload);
+      this.rejectInvalid(client, String(type), ErrorCode.InvalidPayload);
     });
   }
 
@@ -119,10 +141,15 @@ export class DevSectorRoom extends Room<{
     this.#abusive.delete(client.sessionId);
   }
 
-  /** Answers an invalid intent and disconnects clients that keep sending them. */
-  protected reject(client: Client, action: string, code: ErrorCode): void {
+  /** Tells the player why a valid request was refused (helm taken, too far…). */
+  protected notifyRefusal(client: Client, action: string, code: ErrorCode): void {
     const payload: ActionRejectedPayload = { action, code };
     client.send(ServerMessage.ActionRejected, payload);
+  }
+
+  /** Answers a malformed message and disconnects clients that keep sending them. */
+  protected rejectInvalid(client: Client, action: string, code: ErrorCode): void {
+    this.notifyRefusal(client, action, code);
     let budget = this.#violations.get(client.sessionId);
     if (!budget) {
       budget = new ViolationBudget(MAX_VIOLATIONS, VIOLATION_WINDOW_MS);
@@ -144,6 +171,7 @@ export class DevSectorRoom extends Room<{
     state.ship.angle = kinematics.angle;
     state.ship.vx = kinematics.velocity.x;
     state.ship.vy = kinematics.velocity.y;
+    state.ship.operatorId = simulation.ship.operatorId ?? '';
     for (const member of simulation.crew.values()) {
       const view = state.crew.get(member.id);
       if (!view) continue;
@@ -151,6 +179,7 @@ export class DevSectorRoom extends Room<{
       view.y = member.position.y;
       view.connected = member.connected;
       view.lastInputSeq = member.lastAppliedSeq;
+      view.atHelm = member.atHelm;
     }
   }
 }

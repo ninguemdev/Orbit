@@ -6,6 +6,7 @@ import {
   type TestServer,
   crewSnapshot,
   joinDevRoom,
+  safeLeave,
   sleep,
   startTestServer,
   waitFor,
@@ -20,7 +21,7 @@ describe('dev sector room', () => {
   });
 
   afterAll(async () => {
-    await Promise.all(rooms.map((room) => room.leave().catch(() => undefined)));
+    await Promise.all(rooms.map(safeLeave));
     await server.close();
   });
 

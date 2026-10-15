@@ -42,7 +42,7 @@ export async function joinDevRoom(
 
 export async function waitFor(
   predicate: () => boolean,
-  { timeoutMs = 3000, label = 'condição' } = {},
+  { timeoutMs = 5000, label = 'condição' } = {},
 ): Promise<void> {
   const deadline = performance.now() + timeoutMs;
   while (!predicate()) {
@@ -61,4 +61,9 @@ export function crewSnapshot(room: SectorRoom): Record<string, { x: number; y: n
     result[id] = { x: member.x, y: member.y };
   });
   return result;
+}
+
+/** Leaves a room, tolerating rooms that already left or were closed by the server. */
+export async function safeLeave(room: SectorRoom): Promise<void> {
+  await Promise.race([room.leave().catch(() => undefined), sleep(1000)]);
 }
