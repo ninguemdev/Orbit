@@ -181,7 +181,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.05 — Selecionar classe e apresentar funções
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** ui/gameplay. **Tamanho:** P. **Depende de:** V02.04.
 

@@ -9,7 +9,7 @@ import { RoomTicketStore } from './modules/party/room-tickets';
 import { isOriginAllowed } from './transport/access-policy';
 import { defineDevSectorRoom } from './transport/dev-sector-room';
 import { createAccountApi } from './transport/http/account-routes';
-import { definePartyRoom } from './transport/party-room';
+import { type ClassPreferences, definePartyRoom } from './transport/party-room';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -17,6 +17,8 @@ const MAX_PAYLOAD_BYTES = 4 * 1024;
 export interface GameServices {
   /** Account API; omitted only by tests that exercise rooms alone. */
   readonly identity?: IdentityService;
+  /** Persists class choices made in parties. */
+  readonly classPreferences?: ClassPreferences;
 }
 
 export function createGameServer(config: ServerConfig, services: GameServices = {}): Server {
@@ -63,6 +65,13 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
     http.headersTimeout = 76_000;
   }
   server.define(DEV_ROOM_NAME, defineDevSectorRoom(policy));
-  server.define(PARTY_ROOM_NAME, definePartyRoom({ tickets, directory }));
+  server.define(
+    PARTY_ROOM_NAME,
+    definePartyRoom({
+      tickets,
+      directory,
+      ...(services.classPreferences ? { classPreferences: services.classPreferences } : {}),
+    }),
+  );
   return server;
 }

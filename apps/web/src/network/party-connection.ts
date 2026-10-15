@@ -17,6 +17,7 @@ export interface PartyMember {
   readonly accountId: string;
   readonly nick: string;
   readonly connected: boolean;
+  readonly classId: string;
 }
 
 export interface PartyView {
@@ -98,6 +99,10 @@ export class PartyConnection {
     this.#room.send(PartyClientMessage.Promote, { accountId });
   }
 
+  selectClass(classId: string): void {
+    this.#room.send(PartyClientMessage.SelectClass, { classId });
+  }
+
   /** Leaves on purpose; listeners are not told about this close. */
   async leave(): Promise<void> {
     this.#closedByUs = true;
@@ -106,12 +111,15 @@ export class PartyConnection {
 }
 
 function toView(state: PartyStateView): PartyView {
-  const members: (PartyMember & { joinedAt: number })[] = [];
+  const members: { member: PartyMember; joinedAt: number }[] = [];
   state.members?.forEach((member, accountId) => {
     members.push({
-      accountId,
-      nick: member.nick,
-      connected: member.connected,
+      member: {
+        accountId,
+        nick: member.nick,
+        connected: member.connected,
+        classId: member.classId,
+      },
       joinedAt: member.joinedAt,
     });
   });
@@ -119,6 +127,6 @@ function toView(state: PartyStateView): PartyView {
   return {
     leaderId: state.leaderId ?? '',
     inviteCode: state.inviteCode ?? '',
-    members: members.map(({ accountId, nick, connected }) => ({ accountId, nick, connected })),
+    members: members.map((entry) => entry.member),
   };
 }

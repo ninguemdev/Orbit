@@ -32,6 +32,7 @@ export const PartyClientMessage = {
   Invite: 'party.invite',
   Kick: 'party.kick',
   Promote: 'party.promote',
+  SelectClass: 'party.class.select',
 } as const;
 
 export const PartyServerMessage = {
@@ -41,6 +42,8 @@ export const PartyServerMessage = {
 
 export const partyInviteSchema = z.strictObject({ nick: nickSchema });
 export const partyMemberTargetSchema = z.strictObject({ accountId: z.uuid() });
+/** Class IDs are checked against the versioned catalog by the server. */
+export const partySelectClassSchema = z.strictObject({ classId: z.string().min(1).max(64) });
 
 export const PartyErrorCode = {
   InvalidInviteCode: 'invalid_invite_code',
@@ -51,6 +54,7 @@ export const PartyErrorCode = {
   NotLeader: 'not_leader',
   NotMember: 'not_member',
   InvalidPayload: 'invalid_payload',
+  UnknownClass: 'unknown_class',
 } as const;
 export type PartyErrorCode = (typeof PartyErrorCode)[keyof typeof PartyErrorCode];
 
@@ -76,6 +80,8 @@ export interface PartyMemberView {
   readonly nick: string;
   readonly connected: boolean;
   readonly joinedAt: number;
+  /** Catalog class ID chosen for the next mission; empty until chosen. */
+  readonly classId: string;
 }
 
 export interface PartyStateView {

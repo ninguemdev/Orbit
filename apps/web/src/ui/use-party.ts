@@ -25,6 +25,7 @@ export interface PartyControls {
   invite(nick: string): void;
   kick(accountId: string): void;
   promote(accountId: string): void;
+  selectClass(classId: string): void;
   leaveParty(): Promise<void>;
   reclaim(): Promise<void>;
 }
@@ -36,6 +37,7 @@ const REFUSAL_TEXT: Record<string, string> = {
   not_leader: 'Só o líder pode fazer isso.',
   not_member: 'Esse jogador não está mais na party.',
   invalid_payload: 'Pedido inválido.',
+  unknown_class: 'Classe desconhecida.',
 };
 
 type OpenOutcome = { ok: true } | { ok: false; code: ClientErrorCode | 'join_failed' | 'stale' };
@@ -205,6 +207,7 @@ export function useParty(signedIn: boolean): PartyControls {
     },
     kick: (accountId) => current.current?.kick(accountId),
     promote: (accountId) => current.current?.promote(accountId),
+    selectClass: (classId) => current.current?.selectClass(classId),
     leaveParty: async () => {
       await run({ intent: 'create' });
     },

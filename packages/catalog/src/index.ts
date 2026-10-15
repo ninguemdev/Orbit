@@ -4,7 +4,7 @@ import type { Circle, Rect, ShipHandling, Vec2 } from '@orbit/simulation';
  * Versioned game definitions. IDs are stable: never reuse an ID for a different
  * meaning; bump CATALOG_VERSION when definitions change.
  */
-export const CATALOG_VERSION = 1;
+export const CATALOG_VERSION = 2;
 
 export const ClassId = {
   Pilot: 'class.pilot',
@@ -20,6 +20,44 @@ export const CLASS_NAMES: Readonly<Record<ClassId, string>> = {
   [ClassId.Medic]: 'Médico',
   [ClassId.Officer]: 'Oficial',
 };
+
+export interface ClassDescription {
+  /** What the class does in the crew, as designed (docs/03-CLASSES.md). */
+  readonly role: string;
+  /** Milestone where its effects start to work in game; shown so nothing is promised early. */
+  readonly availableIn: string;
+}
+
+export const CLASS_DESCRIPTIONS: Readonly<Record<ClassId, ClassDescription>> = {
+  [ClassId.Pilot]: {
+    role: 'Melhora velocidade, aceleração e giro da nave enquanto ocupa o comando, e recarrega o boost mais rápido.',
+    availableIn: '0.4',
+  },
+  [ClassId.Engineer]: {
+    role: 'Repara casco e motor mais rápido, move-se melhor em EVA e sobrecarrega o motor por alguns segundos.',
+    availableIn: '0.4',
+  },
+  [ClassId.Medic]: {
+    role: 'Cultiva ingredientes na horta da nave, fabrica seringas e aplica tratamentos mais rápido.',
+    availableIn: '0.6',
+  },
+  [ClassId.Officer]: {
+    role: 'Tem mais vida e stamina, recarrega e causa mais dano com armas pessoais, usa armas longas e melhora a arma da nave sob seu comando (mais dano, menos calor).',
+    availableIn: '0.6 e 0.7',
+  },
+};
+
+/** Display order of the classes. */
+export const CLASS_ORDER: readonly ClassId[] = [
+  ClassId.Pilot,
+  ClassId.Engineer,
+  ClassId.Medic,
+  ClassId.Officer,
+];
+
+export function isClassId(value: string): value is ClassId {
+  return Object.hasOwn(CLASS_NAMES, value);
+}
 
 /** Player appearance options. Profiles store these IDs; the server rejects anything else. */
 export const AppearanceColorId = {

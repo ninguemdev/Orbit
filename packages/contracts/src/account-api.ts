@@ -62,7 +62,8 @@ export interface RecoveryCodeResponse {
 
 export interface MeResponse {
   readonly account: { readonly id: string; readonly nick: string };
-  readonly profile: { readonly colorId: string };
+  /** `classId`: class chosen for the next mission, kept across parties and logins. */
+  readonly profile: { readonly colorId: string; readonly classId: string | null };
   /** Whether an unused recovery code exists (never the code itself). */
   readonly hasRecoveryCode: boolean;
 }

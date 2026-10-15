@@ -113,7 +113,7 @@ Depois de entrar na conta, cada jogador já está numa party só sua, com um có
 - Digite o código de outra party em **Entrar em outra party**; ou
 - Como líder, convide pelo nick em **Convidar jogador online**; a outra pessoa aceita no próprio menu.
 
-O líder pode **Passar liderança** e **Remover** membros (até 4 por party). Quem sai volta para uma party só sua; se o líder sai, o membro mais antigo assume. A sala de desenvolvimento ainda é compartilhada por todos, independentemente da party.
+Cada jogador escolhe a própria classe para a próxima missão (Piloto, Engenheiro, Médico ou Oficial; repetir é permitido), a escolha fica salva na conta e todos veem o roster. Nesta versão a classe só identifica a função; os efeitos entram nas versões indicadas no menu. O líder pode **Passar liderança** e **Remover** membros (até 4 por party). Quem sai volta para uma party só sua; se o líder sai, o membro mais antigo assume. A sala de desenvolvimento ainda é compartilhada por todos, independentemente da party.
 
 ### API de conta
 

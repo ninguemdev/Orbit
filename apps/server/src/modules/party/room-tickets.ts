@@ -8,6 +8,8 @@ export type TicketIntent =
 export interface TicketHolder {
   readonly accountId: string;
   readonly nick: string;
+  /** Saved class choice, restored when entering any party; empty if none. */
+  readonly classId: string;
 }
 
 export interface RoomTicket extends TicketHolder {
@@ -42,7 +44,12 @@ export class RoomTicketStore {
     if (!ticket) return null;
     this.#tickets.delete(token);
     if (ticket.expiresAt <= this.#now()) return null;
-    return { accountId: ticket.accountId, nick: ticket.nick, intent: ticket.intent };
+    return {
+      accountId: ticket.accountId,
+      nick: ticket.nick,
+      classId: ticket.classId,
+      intent: ticket.intent,
+    };
   }
 
   #purgeExpired(): void {
