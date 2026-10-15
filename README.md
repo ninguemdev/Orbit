@@ -2,7 +2,7 @@
 
 Jogo 2D top down de extração espacial cooperativa para navegador. Uma tripulação pilota uma nave, explora o setor, recupera recursos e precisa alcançar a extração para guardar as recompensas no inventário permanente.
 
-**Nome provisório:** Orbit. **Estado atual:** planejamento; este pacote ainda não contém o jogo implementado. Os comandos de execução serão adicionados e verificados na versão 0.1.0.
+**Nome provisório:** Orbit. **Estado atual:** protótipo técnico da versão 0.1.0. Duas ou mais pessoas entram na mesma sala de desenvolvimento, caminham dentro da nave e uma delas pilota a nave pelo setor. Ainda não há contas, inventário, loot, extração nem classes jogáveis; essas funções seguem o [roadmap](docs/08-ROADMAP.md).
 
 ## A experiência
 
@@ -28,7 +28,7 @@ O tamanho da tripulação, a duração das partidas e os números de balanceamen
 | Ferramentas | pnpm, ESLint, Prettier, Vitest e Playwright | Workspace, qualidade e verificação |
 | Operação | Docker Compose + Caddy | Backend, banco, arquivos estáticos e HTTPS/WSS |
 
-As versões exatas serão travadas no lockfile em 0.1. Não usar pacotes beta/RC como padrão. A arquitetura e os critérios de compatibilidade estão em [docs/04-ARQUITETURA.md](docs/04-ARQUITETURA.md).
+As versões exatas estão travadas em `pnpm-lock.yaml` e listadas em [docs/04-ARQUITETURA.md](docs/04-ARQUITETURA.md), junto com os critérios de compatibilidade. Não usar pacotes beta/RC como padrão. Na 0.1, Caddy e o deploy ainda não foram configurados.
 
 ## Documentação
 
@@ -69,9 +69,51 @@ Cada marco tem seu próprio critério de aceite. Um título de release não subs
 
 ## Desenvolvimento
 
-Monorepo com `apps/web`, `apps/server` e pacotes de contratos, catálogo, simulação e acesso a dados. O domínio deve funcionar sem depender do Phaser ou do Colyseus. Dados valiosos e regras de partida pertencem ao servidor; o cliente renderiza, prevê movimento e apresenta o estado autorizado.
+Monorepo pnpm com `apps/web` (React + Phaser), `apps/server` (Colyseus) e os pacotes `contracts` (mensagens e schemas de validação), `catalog` (definições versionadas), `simulation` (matemática pura de movimento e colisão) e `database` (pool, schema e migrações). O domínio não depende de Phaser, React, Colyseus nem do banco; uma regra de lint impede essas importações. O servidor simula posições e colisões; o cliente envia intenções, interpola e apresenta o estado autorizado.
 
-O primeiro milestone criará o workspace executável, `.env.example`, migrações, scripts e CI. Este README deve ser atualizado com instruções realmente executadas, sem apresentar comandos planejados como se já funcionassem.
+### Requisitos
+
+- Node.js 24 LTS (`.node-version`).
+- pnpm 12.9.1, a versão declarada em `packageManager`.
+- Docker, apenas para o PostgreSQL de desenvolvimento.
+
+### Comandos
+
+Executados e verificados no Windows 11 com Node 24.18.0 e pnpm 12.9.1, e no CI (Ubuntu):
+
+| Comando | Efeito |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Instala exatamente as versões do lockfile |
+| `pnpm dev` | Servidor de jogo em `ws://127.0.0.1:2567` e cliente em `http://127.0.0.1:5173` |
+| `pnpm lint` / `pnpm format:check` | ESLint e Prettier |
+| `pnpm typecheck` | TypeScript estrito em todos os pacotes |
+| `pnpm test` | Testes unitários e de integração com servidor e clientes SDK reais |
+| `pnpm build` | Bundle do servidor (`apps/server/dist`) e build estático do cliente (`apps/web/dist`) |
+| `pnpm check` | lint, format:check, typecheck, test e build em sequência |
+| `pnpm db:up` / `pnpm db:down` | Sobe/derruba o PostgreSQL 18 de `infra/compose.dev.yml` |
+| `pnpm db:migrate` | Aplica as migrações em `DATABASE_URL` |
+| `pnpm db:smoke` | Cria um banco descartável, migra duas vezes, confere o schema e as conexões encerradas |
+| `pnpm build && pnpm e2e` | Teste multiplayer com dois navegadores sobre o build de produção |
+
+Copie `.env.example` para `.env` antes de usar os comandos de banco. O `pnpm e2e` usa as portas 2567 e 4173; encerre o `pnpm dev` antes. Na primeira vez, instale o navegador com `pnpm exec playwright install chromium`.
+
+### Abrir duas sessões no protótipo
+
+1. Rode `pnpm install --frozen-lockfile` e depois `pnpm dev`.
+2. Abra `http://127.0.0.1:5173` em duas janelas separadas (por exemplo, uma janela normal e outra anônima, ou dois navegadores).
+3. Em cada janela, informe um nome (opcional) e clique em **Entrar na sala**. As duas entram na mesma sala e aparecem na lista do painel.
+4. **WASD** ou setas movem o tripulante dentro da nave. Para pilotar, passe pela porta da ponte até o círculo amarelo do console e pressione **E**. No comando, **W/S** aceleram/freiam e **A/D** giram. **E** ou **Esc** liberam o comando.
+5. A outra janela vê a mesma nave se mover. Se ela tentar assumir o comando ocupado, o painel informa o motivo.
+
+### Limitações da 0.1
+
+- Sala de desenvolvimento anônima: não há conta nem sessão. Origem e versão de protocolo são validadas; sem cabeçalho Origin, a conexão só é aceita fora de produção.
+- Até 4 tripulantes por sala; uma quinta pessoa cria outra sala.
+- Sem previsão local: o próprio personagem aparece com cerca de 100 ms mais a latência. Os outros jogadores e a nave são interpolados; previsão e reconciliação do jogador local ficam para depois de estabilizar o fluxo.
+- Uma queda reserva o assento por 60 s. O tripulante aparece como "reconectando", e fechar a aba deixa o personagem na sala até esse prazo. A detecção depende do heartbeat do servidor e pode levar alguns segundos.
+- Um único setor fixo, um casco de nave e colisão por círculos contra asteroides. Não há dano, boost, consoles extras, EVA nem combate.
+- O banco tem só a migração baseline (`app_metadata`); o servidor de jogo ainda não usa o PostgreSQL.
+- Sem deploy, HTTPS nem proxy. Use apenas em ambiente de desenvolvimento.
 
 Para contribuir, veja [CONTRIBUTING.md](CONTRIBUTING.md). Alterações de escopo precisam aparecer no roadmap e na matriz de requisitos.
 
