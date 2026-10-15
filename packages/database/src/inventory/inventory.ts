@@ -27,6 +27,26 @@ export async function grantStarterPackage(tx: Executor, accountId: string): Prom
     );
 }
 
+/** Ship licenses of one account, by catalog ID. */
+export async function getShipLicenses(db: Database, accountId: string): Promise<string[]> {
+  const rows = await db
+    .select({ shipId: shipUnlocks.shipId })
+    .from(shipUnlocks)
+    .where(eq(shipUnlocks.accountId, accountId))
+    .orderBy(asc(shipUnlocks.shipId));
+  return rows.map((row) => row.shipId);
+}
+
+/** Grants a ship license; granting one the account already has changes nothing. */
+export async function grantShipLicense(
+  db: Database,
+  accountId: string,
+  shipId: string,
+  source: string,
+): Promise<void> {
+  await db.insert(shipUnlocks).values({ accountId, shipId, source }).onConflictDoNothing();
+}
+
 export interface StashEntry {
   readonly slot: number;
   readonly instanceId: string;

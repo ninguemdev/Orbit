@@ -4,7 +4,7 @@ import type { Circle, Rect, ShipHandling, Vec2 } from '@orbit/simulation';
  * Versioned game definitions. IDs are stable: never reuse an ID for a different
  * meaning; bump CATALOG_VERSION when definitions change.
  */
-export const CATALOG_VERSION = 2;
+export const CATALOG_VERSION = 3;
 
 export const ClassId = {
   Pilot: 'class.pilot',
@@ -122,10 +122,11 @@ export interface ShipHullDefinition {
   readonly crewSpawns: readonly Vec2[];
 }
 
-export const ShipHullId = { Scout: 'ship.scout' } as const;
+export const ShipHullId = { Scout: 'ship.scout', Hauler: 'ship.hauler' } as const;
 export type ShipHullId = (typeof ShipHullId)[keyof typeof ShipHullId];
 
 const SCOUT_HELM_BODY: Rect = { minX: 136, minY: -18, maxX: 148, maxY: 18 };
+const HAULER_HELM_BODY: Rect = { minX: 166, minY: -18, maxX: 178, maxY: 18 };
 
 export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
   [ShipHullId.Scout]: {
@@ -164,6 +165,50 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
       { x: -40, y: 30 },
       { x: 10, y: -30 },
       { x: 10, y: 30 },
+    ],
+  },
+  // Larger and slower, with more room for cargo. Usable in missions from 0.3.
+  [ShipHullId.Hauler]: {
+    id: ShipHullId.Hauler,
+    name: 'Cargueira',
+    handling: {
+      maxSpeed: 200,
+      thrustAcceleration: 100,
+      reverseAcceleration: 70,
+      turnRate: 1.1,
+      linearDamping: 0.25,
+      radius: 252,
+    },
+    outline: [
+      { x: 250, y: 0 },
+      { x: 180, y: -115 },
+      { x: -200, y: -115 },
+      { x: -220, y: -80 },
+      { x: -220, y: 80 },
+      { x: -200, y: 115 },
+      { x: 180, y: 115 },
+    ],
+    interiorBounds: { minX: -180, minY: -100, maxX: 180, maxY: 100 },
+    interiorWalls: [
+      { minX: 100, minY: -100, maxX: 106, maxY: -32 },
+      { minX: 100, minY: 32, maxX: 106, maxY: 100 },
+      HAULER_HELM_BODY,
+      { minX: -170, minY: -90, maxX: -120, maxY: -50 },
+      { minX: -170, minY: 50, maxX: -120, maxY: 90 },
+      { minX: -100, minY: -90, maxX: -60, maxY: -60 },
+      { minX: -100, minY: 60, maxX: -60, maxY: 90 },
+    ],
+    helm: {
+      id: 'console.helm',
+      seat: { x: 150, y: 0 },
+      interactRadius: 34,
+      body: HAULER_HELM_BODY,
+    },
+    crewSpawns: [
+      { x: -20, y: -30 },
+      { x: -20, y: 30 },
+      { x: 40, y: -30 },
+      { x: 40, y: 30 },
     ],
   },
 };

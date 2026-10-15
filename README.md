@@ -93,7 +93,7 @@ Executados e verificados no Windows 11 com Node 24.18.0 e pnpm 12.9.1, e no CI (
 | `pnpm db:up` / `pnpm db:down` | Sobe/derruba o PostgreSQL 18 de `infra/compose.dev.yml` |
 | `pnpm db:migrate` | Aplica as migrações em `DATABASE_URL` |
 | `pnpm db:smoke` | Cria um banco descartável, migra duas vezes, confere o schema e as conexões encerradas |
-| `pnpm db:seed-dev <nick>` | Concede um conjunto fixo de itens de teste a uma conta (recusado em produção) |
+| `pnpm db:seed-dev <nick>` | Concede um conjunto fixo de itens de teste e a licença da Cargueira a uma conta (recusado em produção) |
 | `pnpm test:db` | Testes de integração SQL (constraints, concorrência, rollback) em bancos descartáveis; exige `pnpm db:up` |
 | `pnpm build && pnpm e2e` | Teste multiplayer com dois navegadores sobre o build de produção |
 

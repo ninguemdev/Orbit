@@ -12,6 +12,7 @@ import {
   type PartyStateView,
   type PartyTicketResponse,
 } from '@orbit/contracts';
+import { grantShipLicense } from '@orbit/database';
 import { DEFAULT_IDENTITY_POLICY } from '../src/modules/identity/identity-service';
 import { ALLOWED_ORIGIN, type ApiServer, call, startApiServer } from './api-harness';
 
@@ -207,6 +208,76 @@ describe('parties', () => {
     expect(refused.map((refusal) => refusal.code)).toEqual(['unknown_class', 'invalid_payload']);
     expect(classOf(party, guest.id)).toBe('class.medic');
     expect(classOf(party, leader.id)).toBe('class.pilot');
+  });
+
+  describe('ship union', () => {
+    const shipsOf = (room: PartyRoomClient, id: string) => {
+      const ships: string[] = [];
+      room.state.members.forEach((member, memberId) => {
+        if (memberId === id) member.ships.forEach((shipId) => ships.push(shipId));
+      });
+      return ships;
+    };
+    const union = (room: PartyRoomClient) => {
+      const ships = new Set<string>();
+      room.state.members.forEach((member) => member.ships.forEach((shipId) => ships.add(shipId)));
+      return [...ships].sort();
+    };
+
+    it('offers every member ship once and lets only the leader pick one a member owns', async () => {
+      const [leader, guest] = [await account(), await account()];
+      await grantShipLicense(api.db, guest.id, 'ship.hauler', 'grant:test');
+      const party = await createParty(leader);
+      expect(party.state.selectedShipId).toBe('ship.scout');
+      const guestRoom = await joinByCode(guest, party.state.inviteCode);
+      await waitFor(() => union(party).length === 2, 'união das naves');
+      // Both bring the scout; the union lists it once.
+      expect(union(guestRoom)).toEqual(['ship.hauler', 'ship.scout']);
+      expect(shipsOf(party, leader.id)).toEqual(['ship.scout']);
+      expect(shipsOf(party, guest.id)).toEqual(['ship.hauler', 'ship.scout']);
+
+      // The leader may pick a ship only a guest is licensed for.
+      party.send(PartyClientMessage.SelectShip, { shipId: 'ship.hauler' });
+      await waitFor(() => guestRoom.state.selectedShipId === 'ship.hauler', 'nave escolhida');
+
+      const guestRefusals = refusals(guestRoom);
+      guestRoom.send(PartyClientMessage.SelectShip, { shipId: 'ship.scout' });
+      const leaderRefusals = refusals(party);
+      party.send(PartyClientMessage.SelectShip, { shipId: 'ship.cruiser' });
+      party.send(PartyClientMessage.SelectShip, { shipId: 'ship.scout', ships: ['ship.cruiser'] });
+      await waitFor(() => guestRefusals.length === 1 && leaderRefusals.length === 2, 'recusas');
+      expect(guestRefusals.map((refusal) => refusal.code)).toEqual(['not_leader']);
+      expect(leaderRefusals.map((refusal) => refusal.code)).toEqual([
+        'ship_unavailable',
+        'invalid_payload',
+      ]);
+      expect(party.state.selectedShipId).toBe('ship.hauler');
+    });
+
+    it('drops the choice when its last owner leaves, but not while another owner stays', async () => {
+      const [leader, first, second] = [await account(), await account(), await account()];
+      await grantShipLicense(api.db, first.id, 'ship.hauler', 'grant:test');
+      await grantShipLicense(api.db, second.id, 'ship.hauler', 'grant:test');
+      const party = await createParty(leader);
+      const firstRoom = await joinByCode(first, party.state.inviteCode);
+      const secondRoom = await joinByCode(second, party.state.inviteCode);
+      await waitFor(() => party.state.members.size === 3, 'três membros');
+      party.send(PartyClientMessage.SelectShip, { shipId: 'ship.hauler' });
+      await waitFor(() => party.state.selectedShipId === 'ship.hauler', 'cargueira escolhida');
+
+      await firstRoom.leave();
+      rooms = rooms.filter((room) => room !== firstRoom);
+      await waitFor(() => party.state.members.size === 2, 'primeiro dono saiu');
+      expect(party.state.selectedShipId).toBe('ship.hauler');
+
+      await secondRoom.leave();
+      rooms = rooms.filter((room) => room !== secondRoom);
+      await waitFor(() => party.state.selectedShipId === '', 'escolha invalidada');
+      expect(union(party)).toEqual(['ship.scout']);
+      party.send(PartyClientMessage.SelectShip, { shipId: 'ship.hauler' });
+      party.send(PartyClientMessage.SelectShip, { shipId: 'ship.scout' });
+      await waitFor(() => party.state.selectedShipId === 'ship.scout', 'nova escolha');
+    });
   });
 
   it('keeps the chosen class across parties and in the account profile', async () => {

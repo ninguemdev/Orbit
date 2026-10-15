@@ -1,5 +1,12 @@
 import { type FormEvent, useState } from 'react';
-import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER, isClassId } from '@orbit/catalog';
+import {
+  CLASS_DESCRIPTIONS,
+  CLASS_NAMES,
+  CLASS_ORDER,
+  SHIP_HULLS,
+  isClassId,
+  isShipHullId,
+} from '@orbit/catalog';
 import { PARTY_MAX_MEMBERS } from '@orbit/contracts';
 import type { PartyControls } from './use-party';
 
@@ -14,6 +21,14 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
   const { view } = party;
   const isLeader = view?.leaderId === myAccountId;
   const myClass = view?.members.find((member) => member.accountId === myAccountId)?.classId ?? '';
+
+  // Union of the members' licenses, with who brings each ship (arrival order).
+  const ships = new Map<string, string[]>();
+  for (const member of view?.members ?? []) {
+    for (const shipId of member.ships)
+      ships.set(shipId, [...(ships.get(shipId) ?? []), member.nick]);
+  }
+  const shipName = (shipId: string) => (isShipHullId(shipId) ? SHIP_HULLS[shipId].name : shipId);
 
   const className = (classId: string) =>
     isClassId(classId) ? CLASS_NAMES[classId] : 'classe não escolhida';
@@ -78,6 +93,35 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
       ) : (
         <p>Conectando à party…</p>
       )}
+
+      {view ? (
+        <fieldset className="class-picker" data-testid="party-ships">
+          <legend>Nave da missão</legend>
+          <p className="hint">
+            A party pode usar qualquer nave liberada por um dos membros.{' '}
+            {isLeader ? 'Você escolhe a nave.' : 'O líder escolhe a nave.'}
+          </p>
+          {view.selectedShipId ? null : (
+            <p className="notice" data-testid="ship-missing">
+              Nenhuma nave escolhida.
+            </p>
+          )}
+          {[...ships.entries()].map(([shipId, owners]) => (
+            <label key={shipId} className="class-option">
+              <input
+                type="radio"
+                name="ship"
+                value={shipId}
+                checked={view.selectedShipId === shipId}
+                disabled={!isLeader}
+                onChange={() => party.selectShip(shipId)}
+              />
+              <strong>{shipName(shipId)}</strong>
+              <span className="hint">Liberada por: {owners.join(', ')}</span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
 
       {view ? (
         <fieldset className="class-picker">

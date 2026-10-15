@@ -10,6 +10,8 @@ export interface TicketHolder {
   readonly nick: string;
   /** Saved class choice, restored when entering any party; empty if none. */
   readonly classId: string;
+  /** Ship licenses of the account when the ticket was issued. */
+  readonly ships: readonly string[];
 }
 
 export interface RoomTicket extends TicketHolder {
@@ -48,6 +50,7 @@ export class RoomTicketStore {
       accountId: ticket.accountId,
       nick: ticket.nick,
       classId: ticket.classId,
+      ships: ticket.ships,
       intent: ticket.intent,
     };
   }

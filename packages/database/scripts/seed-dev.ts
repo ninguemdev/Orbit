@@ -5,7 +5,7 @@
 import { ItemId } from '@orbit/catalog';
 import { createDatabase } from '../src/client';
 import { findAccountByNick } from '../src/identity/accounts';
-import { grantItem } from '../src/inventory/inventory';
+import { grantItem, grantShipLicense } from '../src/inventory/inventory';
 import { createPool, readDatabaseUrl } from '../src/pool';
 
 const DEV_ITEMS: readonly [string, number][] = [
@@ -44,7 +44,8 @@ try {
         reason: 'dados de desenvolvimento',
       });
     }
-    console.info(`[seed-dev] itens de teste concedidos a ${account.nick}`);
+    await grantShipLicense(db, account.id, 'ship.hauler', 'grant:dev');
+    console.info(`[seed-dev] itens de teste e licença da Cargueira concedidos a ${account.nick}`);
   }
 } finally {
   await pool.end();

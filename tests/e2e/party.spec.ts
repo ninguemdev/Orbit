@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
 import { signUpInNewContext } from './support/accounts';
 
@@ -23,6 +24,8 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
   });
 
   await test.step('a friend joins with the code', async () => {
+    // Bravo receives the hauler license (dev data) before entering Alfa's party.
+    execSync(`pnpm db:seed-dev ${bravo.nick}`, { stdio: 'ignore' });
     const code = (await alfa.page.getByTestId('party-code').textContent()) ?? '';
     await bravo.page.getByLabel('Entrar em outra party (código)').fill(code.toLowerCase());
     await bravo.page.getByRole('button', { name: 'Entrar', exact: true }).click();
@@ -31,6 +34,19 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
       await expect(members(page)).toContainText(bravo.nick);
     }
     await expect(bravo.page.getByRole('heading', { name: /Sua party \(2\/4\)/ })).toBeVisible();
+  });
+
+  await test.step('the party may use any member ship, chosen by the leader', async () => {
+    for (const page of [alfa.page, bravo.page]) {
+      const ships = page.getByTestId('party-ships');
+      await expect(ships).toContainText(`BatedoraLiberada por: ${alfa.nick}, ${bravo.nick}`);
+      await expect(ships).toContainText(`CargueiraLiberada por: ${bravo.nick}`);
+    }
+    await expect(bravo.page.getByRole('radio', { name: /Cargueira/ })).toBeDisabled();
+    // The radio follows the server state, so the click is confirmed by the update.
+    await alfa.page.getByRole('radio', { name: /Cargueira/ }).click();
+    await expect(alfa.page.getByRole('radio', { name: /Cargueira/ })).toBeChecked();
+    await expect(bravo.page.getByRole('radio', { name: /Cargueira/ })).toBeChecked();
   });
 
   await test.step('only the leader sees invite and member controls', async () => {

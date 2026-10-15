@@ -8,6 +8,8 @@ import { SlidingWindowLimiter } from '../../infrastructure/sliding-window-limite
 import type { PartyDirectory } from './party-directory';
 import type { RoomTicketStore, TicketHolder } from './room-tickets';
 
+export const DEFAULT_CODE_GUESSES_PER_ADDRESS = 20;
+
 export type PartyAccessResult =
   | { readonly ok: true; readonly response: PartyTicketResponse }
   | { readonly ok: false; readonly code: AccountErrorCode };
@@ -24,11 +26,21 @@ export class PartyAccess {
   /** Every ticket creates state (and often a room); bounded per account. */
   readonly #ticketsByAccount: SlidingWindowLimiter;
 
-  constructor(deps: { tickets: RoomTicketStore; directory: PartyDirectory; now?: () => number }) {
+  constructor(deps: {
+    tickets: RoomTicketStore;
+    directory: PartyDirectory;
+    now?: () => number;
+    /** Invite code attempts per address in 15 minutes (default 20). */
+    codeGuessesPerAddress?: number;
+  }) {
     this.#tickets = deps.tickets;
     this.#directory = deps.directory;
     const clock = deps.now ? { now: deps.now } : {};
-    this.#codeGuesses = new SlidingWindowLimiter({ limit: 20, windowMs: 15 * 60 * 1000, ...clock });
+    this.#codeGuesses = new SlidingWindowLimiter({
+      limit: deps.codeGuessesPerAddress ?? DEFAULT_CODE_GUESSES_PER_ADDRESS,
+      windowMs: 15 * 60 * 1000,
+      ...clock,
+    });
     this.#ticketsByAccount = new SlidingWindowLimiter({ limit: 30, windowMs: 60 * 1000, ...clock });
   }
 

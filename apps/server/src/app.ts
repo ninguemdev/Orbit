@@ -22,6 +22,8 @@ export interface GameServices {
   readonly classPreferences?: ClassPreferences;
   /** Database for inventory routes. */
   readonly db?: Database;
+  /** Overrides the invite code attempts allowed per address (tests share one address). */
+  readonly codeGuessesPerAddress?: number;
 }
 
 export function createGameServer(config: ServerConfig, services: GameServices = {}): Server {
@@ -32,7 +34,13 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
   const { identity } = services;
   const tickets = new RoomTicketStore();
   const directory = new PartyDirectory();
-  const party = new PartyAccess({ tickets, directory });
+  const party = new PartyAccess({
+    tickets,
+    directory,
+    ...(services.codeGuessesPerAddress
+      ? { codeGuessesPerAddress: services.codeGuessesPerAddress }
+      : {}),
+  });
   const server = new Server({
     greet: false,
     transport: new WebSocketTransport({
