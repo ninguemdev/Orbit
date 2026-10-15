@@ -1,16 +1,22 @@
 import { type AuthContext, type Client, Room, ServerError } from '@colyseus/core';
 import { CATALOG_VERSION } from '@orbit/catalog';
 import {
+  type ActionRejectedPayload,
+  ClientMessage,
+  ErrorCode,
   MAX_CREW,
   PROTOCOL_VERSION,
   RECONNECTION_WINDOW_SECONDS,
   RoomPhase,
+  ServerMessage,
   TICK_RATE_HZ,
   type JoinOptions,
+  parseCrewInput,
 } from '@orbit/contracts';
 import { SectorSimulation } from '../simulation/sector-simulation';
 import { type AccessPolicy, decideJoin } from './access-policy';
 import { CrewMemberState, SectorState, ShipState } from './sector-schema';
+import { ViolationBudget } from './violation-budget';
 
 export interface DevSectorAuth {
   readonly options: JoinOptions;
@@ -18,6 +24,11 @@ export interface DevSectorAuth {
 
 /** Hard cap; above it Colyseus drops the connection. Normal play sends ~20–40/s. */
 const MAX_MESSAGES_PER_SECOND = 60;
+/** Invalid messages tolerated per window before the connection is closed. */
+const MAX_VIOLATIONS = 20;
+const VIOLATION_WINDOW_MS = 10_000;
+/** Close code for connections dropped for sending invalid messages repeatedly. */
+export const ABUSE_CLOSE_CODE = 4409;
 
 /**
  * Development sector room: validates and forwards intents, manages connections and
@@ -34,6 +45,8 @@ export class DevSectorRoom extends Room<{
 
   protected readonly simulation = new SectorSimulation();
   protected now: () => number = () => performance.now();
+  readonly #violations = new Map<string, ViolationBudget>();
+  readonly #abusive = new Set<string>();
 
   /** Denies everyone unless registered through `defineDevSectorRoom` with a policy. */
   static override async onAuth(
@@ -60,6 +73,16 @@ export class DevSectorRoom extends Room<{
       this.simulation.step(ctx.dt, this.now());
       this.syncState();
     }, TICK_RATE_HZ);
+
+    this.onMessage(ClientMessage.CrewInput, (client, raw: unknown) => {
+      const parsed = parseCrewInput(raw);
+      if (!parsed.ok) return this.reject(client, ClientMessage.CrewInput, parsed.code);
+      // Duplicates and reordering are dropped silently: they are normal on reconnection.
+      this.simulation.offerCrewInput(client.sessionId, parsed.value, this.now());
+    });
+    this.onMessage('*', (client, type) => {
+      this.reject(client, String(type), ErrorCode.InvalidPayload);
+    });
   }
 
   override onJoin(client: Client<{ auth: DevSectorAuth }>): void {
@@ -70,7 +93,6 @@ export class DevSectorRoom extends Room<{
     view.id = member.id;
     view.name = member.name;
     view.colorIndex = member.colorIndex;
-    view.lastInputSeq = -1;
     this.state.crew.set(client.sessionId, view);
     this.state.phase = RoomPhase.Active;
     this.syncState();
@@ -79,7 +101,10 @@ export class DevSectorRoom extends Room<{
   override onDrop(client: Client): void {
     this.simulation.setConnected(client.sessionId, false);
     this.syncState();
-    this.allowReconnection(client, RECONNECTION_WINDOW_SECONDS);
+    // Abusive connections are not offered a seat back; onLeave follows.
+    if (!this.#abusive.has(client.sessionId)) {
+      this.allowReconnection(client, RECONNECTION_WINDOW_SECONDS);
+    }
   }
 
   override onReconnect(client: Client): void {
@@ -90,6 +115,23 @@ export class DevSectorRoom extends Room<{
   override onLeave(client: Client): void {
     this.simulation.removeCrew(client.sessionId);
     this.state.crew.delete(client.sessionId);
+    this.#violations.delete(client.sessionId);
+    this.#abusive.delete(client.sessionId);
+  }
+
+  /** Answers an invalid intent and disconnects clients that keep sending them. */
+  protected reject(client: Client, action: string, code: ErrorCode): void {
+    const payload: ActionRejectedPayload = { action, code };
+    client.send(ServerMessage.ActionRejected, payload);
+    let budget = this.#violations.get(client.sessionId);
+    if (!budget) {
+      budget = new ViolationBudget(MAX_VIOLATIONS, VIOLATION_WINDOW_MS);
+      this.#violations.set(client.sessionId, budget);
+    }
+    if (budget.record(this.now()) && !this.#abusive.has(client.sessionId)) {
+      this.#abusive.add(client.sessionId);
+      client.leave(ABUSE_CLOSE_CODE, 'too_many_invalid_messages');
+    }
   }
 
   /** Copies the authoritative simulation into the synchronized schema. */
@@ -108,6 +150,7 @@ export class DevSectorRoom extends Room<{
       view.x = member.position.x;
       view.y = member.position.y;
       view.connected = member.connected;
+      view.lastInputSeq = member.lastAppliedSeq;
     }
   }
 }

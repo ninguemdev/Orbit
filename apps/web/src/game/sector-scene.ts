@@ -3,6 +3,7 @@ import { CREW, SECTORS, SHIP_HULLS, SectorId, ShipHullId } from '@orbit/catalog'
 import { rotate } from '@orbit/simulation';
 import type { SectorBridge } from '../network/sector-connection';
 import type { CrewSnapshot } from '../network/world-snapshot';
+import { KeyboardControls } from './keyboard-controls';
 import { PALETTE, crewColor } from './palette';
 
 export interface SectorSceneData {
@@ -30,6 +31,7 @@ export class SectorScene extends Phaser.Scene {
   #stars!: Phaser.GameObjects.TileSprite;
   #fpsText!: Phaser.GameObjects.Text;
   #fpsUpdatedAt = 0;
+  #controls!: KeyboardControls;
   readonly #crew = new Map<string, CrewView>();
 
   constructor() {
@@ -73,9 +75,11 @@ export class SectorScene extends Phaser.Scene {
     this.scale.on(Phaser.Scale.Events.RESIZE, (size: Phaser.Structs.Size) => {
       this.#stars.setSize(size.width, size.height);
     });
+    this.#controls = new KeyboardControls(this);
   }
 
   override update(time: number): void {
+    this.#sendIntent();
     const snapshot = this.#bridge.sample(performance.now());
     if (snapshot) {
       const { ship } = snapshot;
@@ -90,6 +94,15 @@ export class SectorScene extends Phaser.Scene {
       this.#fpsUpdatedAt = time;
       this.#fpsText.setText(`${Math.round(this.game.loop.actualFps)} FPS`);
     }
+  }
+
+  /**
+   * Converts screen-space keys into the ship's local axes (the camera does not rotate
+   * with the ship). Only a direction is sent; the server decides the position.
+   */
+  #sendIntent(): void {
+    const angle = this.#bridge.latest()?.ship.angle ?? 0;
+    this.#bridge.setMoveIntent(rotate(this.#controls.axes(), -angle));
   }
 
   #createStarTexture(): void {

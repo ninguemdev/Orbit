@@ -1,17 +1,34 @@
 import { Client, type Room } from '@colyseus/sdk';
-import { DEV_ROOM_NAME, PROTOCOL_VERSION, type SectorStateView } from '@orbit/contracts';
+import {
+  ClientMessage,
+  DEV_ROOM_NAME,
+  INPUT_SEND_RATE_HZ,
+  INTERPOLATION_DELAY_MS,
+  PROTOCOL_VERSION,
+  type CrewInput,
+  type SectorStateView,
+} from '@orbit/contracts';
+import { SnapshotBuffer } from './snapshot-buffer';
 import { type WorldSnapshot, snapshotFromState } from './world-snapshot';
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected';
+
+/** Direction the player wants to move, already in ship-local axes (length ≤ 1). */
+export interface MoveIntent {
+  readonly x: number;
+  readonly y: number;
+}
 
 /** What the Phaser scene and the HUD may read or ask; they never touch the SDK. */
 export interface SectorBridge {
   readonly sessionId: string;
   readonly status: ConnectionStatus;
   readonly pingMs: number | null;
-  /** State to render at local time `nowMs`. */
+  /** Interpolated state to render at local time `nowMs`. */
   sample(nowMs: number): WorldSnapshot | null;
   latest(): WorldSnapshot | null;
+  /** Continuous movement intent; sent at the input rate, never as a position. */
+  setMoveIntent(intent: MoveIntent): void;
 }
 
 export function defaultServerEndpoint(): string {
@@ -20,22 +37,29 @@ export function defaultServerEndpoint(): string {
 }
 
 const PING_INTERVAL_MS = 2000;
+const NEUTRAL: MoveIntent = Object.freeze({ x: 0, y: 0 });
 
 export class SectorConnection implements SectorBridge {
   readonly #room: Room<unknown, SectorStateView>;
-  #latest: WorldSnapshot | null = null;
+  readonly #snapshots = new SnapshotBuffer();
   #status: ConnectionStatus = 'connected';
   #pingMs: number | null = null;
-  readonly #pingTimer: ReturnType<typeof setInterval>;
+  #intent: MoveIntent = NEUTRAL;
+  #neutralSent = true;
+  #seq = 0;
+  readonly #timers: ReturnType<typeof setInterval>[];
   readonly #statusListeners = new Set<(status: ConnectionStatus) => void>();
 
   private constructor(room: Room<unknown, SectorStateView>) {
     this.#room = room;
-    room.onStateChange((state) => this.record(state));
+    room.onStateChange((state) => this.#record(state));
     room.onDrop(() => this.#setStatus('reconnecting'));
     room.onReconnect(() => this.#setStatus('connected'));
     room.onLeave(() => this.#setStatus('disconnected'));
-    this.#pingTimer = setInterval(() => room.ping((ms) => (this.#pingMs = ms)), PING_INTERVAL_MS);
+    this.#timers = [
+      setInterval(() => room.ping((ms) => (this.#pingMs = ms)), PING_INTERVAL_MS),
+      setInterval(() => this.#flushInput(), 1000 / INPUT_SEND_RATE_HZ),
+    ];
   }
 
   static async join(endpoint: string, name?: string): Promise<SectorConnection> {
@@ -64,11 +88,15 @@ export class SectorConnection implements SectorBridge {
   }
 
   latest(): WorldSnapshot | null {
-    return this.#latest;
+    return this.#snapshots.latest();
   }
 
-  sample(_nowMs: number): WorldSnapshot | null {
-    return this.#latest;
+  sample(nowMs: number): WorldSnapshot | null {
+    return this.#snapshots.sample(nowMs - INTERPOLATION_DELAY_MS);
+  }
+
+  setMoveIntent(intent: MoveIntent): void {
+    this.#intent = intent;
   }
 
   onStatus(listener: (status: ConnectionStatus) => void): () => void {
@@ -77,17 +105,32 @@ export class SectorConnection implements SectorBridge {
   }
 
   async leave(): Promise<void> {
-    clearInterval(this.#pingTimer);
+    for (const timer of this.#timers) clearInterval(timer);
     await this.#room.leave(true);
   }
 
-  protected record(state: SectorStateView): void {
+  /**
+   * Sends the current intent at most INPUT_SEND_RATE_HZ times per second. Idle
+   * players send a single neutral input and then stay silent.
+   */
+  #flushInput(): void {
+    if (this.#status !== 'connected') return;
+    const { x, y } = this.#intent;
+    const idle = x === 0 && y === 0;
+    if (idle && this.#neutralSent) return;
+    const input: CrewInput = { seq: this.#seq++, x, y };
+    this.#room.send(ClientMessage.CrewInput, input);
+    this.#neutralSent = idle;
+  }
+
+  #record(state: SectorStateView): void {
     if (!state.ship || !state.crew) return;
-    this.#latest = snapshotFromState(state, performance.now());
+    this.#snapshots.push(snapshotFromState(state, performance.now()));
   }
 
   #setStatus(status: ConnectionStatus): void {
     this.#status = status;
+    if (status !== 'connected') this.#intent = NEUTRAL;
     for (const listener of this.#statusListeners) listener(status);
   }
 }

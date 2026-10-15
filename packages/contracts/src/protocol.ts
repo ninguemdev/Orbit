@@ -43,7 +43,8 @@ export const ErrorCode = {
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 export interface ActionRejectedPayload {
-  readonly action: ClientMessage;
+  /** Message type that was refused. */
+  readonly action: string;
   readonly code: ErrorCode;
 }
 
