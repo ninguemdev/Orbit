@@ -82,8 +82,8 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
     interiorBounds: { minX: -150, minY: -80, maxX: 150, maxY: 80 },
     interiorWalls: [
       // Bridge partition with a central doorway.
-      { minX: 70, minY: -80, maxX: 76, maxY: -24 },
-      { minX: 70, minY: 24, maxX: 76, maxY: 80 },
+      { minX: 70, minY: -80, maxX: 76, maxY: -32 },
+      { minX: 70, minY: 32, maxX: 76, maxY: 80 },
       SCOUT_HELM_BODY,
       // Cargo crates.
       { minX: -140, minY: -70, maxX: -108, maxY: -42 },
