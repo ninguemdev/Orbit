@@ -9,6 +9,7 @@ import {
   SECTORS,
   SHIP_HULLS,
   isClassId,
+  sortByShipOrder,
 } from './index';
 
 describe('catalog consistency', () => {
@@ -54,4 +55,11 @@ describe('catalog consistency', () => {
       }
     });
   }
+});
+
+describe('ship order', () => {
+  it('sorts by catalog order and keeps unknown IDs last', () => {
+    const ids = ['ship.unknown', 'ship.hauler', 'ship.scout'];
+    expect(sortByShipOrder(ids, (id) => id)).toEqual(['ship.scout', 'ship.hauler', 'ship.unknown']);
+  });
 });

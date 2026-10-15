@@ -57,6 +57,7 @@ describe('inventory API', () => {
   });
 
   it('lists ship licenses in catalog order, the starter ship first', async () => {
+    // Alphabetically, ship.hauler would come before ship.scout.
     const player = await signUp();
     await grantShipLicense(api.db, player.id, 'ship.hauler', 'grant:test');
     expect((await inventory(player.token)).ships).toEqual([

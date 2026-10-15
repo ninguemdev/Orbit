@@ -92,7 +92,12 @@ test('two accounts prepare together and keep their choices after signing in agai
     await expect(selected(alfa.page, 'Arma secundária')).toHaveText('Pistola padrão');
     await expect(selected(bravo.page, 'Ferramenta')).toHaveText('Kit de reparo');
     await expect(selected(bravo.page, 'Mochila 1')).toHaveText('Kit médico ×3');
-    await expect(alfa.page.getByTestId('loadout').getByRole('alert')).toHaveCount(0);
+    for (const { page } of [alfa, bravo]) {
+      await expect(page.getByTestId('loadout').getByRole('alert')).toHaveCount(0);
+      await expect(
+        page.getByTestId('loadout').locator('[data-testid^="loadout-issue-"]'),
+      ).toHaveCount(0);
+    }
     await expect(alfa.page.getByTestId('ships')).toHaveText('Naves liberadas: Batedora');
     await expect(bravo.page.getByTestId('ships')).toHaveText(
       'Naves liberadas: Batedora, Cargueira',

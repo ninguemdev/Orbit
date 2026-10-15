@@ -23,9 +23,12 @@ if (process.env['NODE_ENV'] === 'production') {
   process.exit(1);
 }
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
-const withShips = !args.includes('--no-ships');
-const nick = args.find((arg) => !arg.startsWith('--'));
-if (!nick) {
+const flags = args.filter((arg) => arg.startsWith('--'));
+const withShips = !flags.includes('--no-ships');
+const nicks = args.filter((arg) => !arg.startsWith('--'));
+const nick = nicks[0];
+// A mistyped flag must not grant a license nobody asked for.
+if (!nick || nicks.length > 1 || flags.some((flag) => flag !== '--no-ships')) {
   console.error('Uso: pnpm db:seed-dev <nick> [--no-ships]');
   process.exit(1);
 }

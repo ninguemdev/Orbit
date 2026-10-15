@@ -241,7 +241,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.10 — Aprovar gate de conta/party/preparação
 
-- [x] Concluída — gate aprovado em 15/10/2026
+- [x] Concluída — gate aprovado e release 0.2.0 preparada em 15/10/2026
 
 **Área:** qualidade. **Tamanho:** M. **Depende de:** V02.09, V02.03.
 

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
-import { ITEMS, STARTER_PACKAGE, STASH_SLOTS, isItemId } from '@orbit/catalog';
+import { ITEMS, STARTER_PACKAGE, STASH_SLOTS, isItemId, sortByShipOrder } from '@orbit/catalog';
 import type { Database } from '../client';
 import {
   accounts,
@@ -32,9 +32,8 @@ export async function getShipLicenses(db: Database, accountId: string): Promise<
   const rows = await db
     .select({ shipId: shipUnlocks.shipId })
     .from(shipUnlocks)
-    .where(eq(shipUnlocks.accountId, accountId))
-    .orderBy(asc(shipUnlocks.shipId));
-  return rows.map((row) => row.shipId);
+    .where(eq(shipUnlocks.accountId, accountId));
+  return sortByShipOrder(rows, (row) => row.shipId).map((row) => row.shipId);
 }
 
 /** Grants a ship license; granting one the account already has changes nothing. */
@@ -110,9 +109,13 @@ export async function getInventory(db: Database, accountId: string): Promise<Inv
       const ships = await tx
         .select({ shipId: shipUnlocks.shipId, source: shipUnlocks.source })
         .from(shipUnlocks)
-        .where(eq(shipUnlocks.accountId, accountId))
-        .orderBy(asc(shipUnlocks.shipId));
-      return { credits: wallet[0]?.credits ?? 0, stash, inbox, ships };
+        .where(eq(shipUnlocks.accountId, accountId));
+      return {
+        credits: wallet[0]?.credits ?? 0,
+        stash,
+        inbox,
+        ships: sortByShipOrder(ships, (ship) => ship.shipId),
+      };
     },
     { isolationLevel: 'repeatable read', accessMode: 'read only' },
   );

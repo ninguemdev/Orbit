@@ -17,7 +17,7 @@ import {
   partySelectShipSchema,
   partySetReadySchema,
 } from '@orbit/contracts';
-import { SHIP_ORDER, isClassId } from '@orbit/catalog';
+import { isClassId, isShipHullId } from '@orbit/catalog';
 import type { PartyDirectory, PartyRoomHandle } from '../modules/party/party-directory';
 import type { RoomTicket, RoomTicketStore } from '../modules/party/room-tickets';
 import { PartyMemberState, PartyState } from './party-schema';
@@ -215,8 +215,9 @@ export class PartyRoom
     member.connected = true;
     member.joinedAt = this.#now();
     member.classId = isClassId(ticket.classId) ? ticket.classId : '';
-    // Licenses as read when the ticket was issued, in catalog order.
-    for (const shipId of SHIP_ORDER) if (ticket.ships.includes(shipId)) member.ships.push(shipId);
+    // Licenses as read when the ticket was issued (already in catalog order); IDs the
+    // catalog does not know cannot be chosen, so they are left out.
+    for (const shipId of ticket.ships) if (isShipHullId(shipId)) member.ships.push(shipId);
     const creator = this.state.members.size === 0;
     this.state.members.set(accountId, member);
     if (!this.state.leaderId) this.state.leaderId = accountId;
