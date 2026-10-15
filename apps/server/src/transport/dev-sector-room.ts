@@ -126,7 +126,9 @@ export class DevSectorRoom extends Room<{
     this.syncState();
     // Abusive connections are not offered a seat back; onLeave follows.
     if (!this.#abusive.has(client.sessionId)) {
-      this.allowReconnection(client, RECONNECTION_WINDOW_SECONDS);
+      // Rejects when the client dropped before finishing the join handshake or when the
+      // seat expires; Colyseus then calls onLeave. Unhandled, it would end the process.
+      this.allowReconnection(client, RECONNECTION_WINDOW_SECONDS).catch(() => undefined);
     }
   }
 

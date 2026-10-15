@@ -12,6 +12,9 @@ export interface ServerConfig {
 
 export interface ServerEnvironment extends ServerConfig {
   readonly databaseUrl: string;
+  /** Per-address limits for sign-up and login (per 15 minutes); undefined = defaults. */
+  readonly signUpsPerAddress: number | undefined;
+  readonly loginAttemptsPerAddress: number | undefined;
 }
 
 const DEFAULT_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173';
@@ -42,7 +45,16 @@ export function readServerConfig(env: NodeJS.ProcessEnv = process.env): ServerEn
     cookieSecure,
     trustProxy: Number(hops) > 0 ? Number(hops) : false,
     databaseUrl,
+    signUpsPerAddress: readPositiveInteger(env, 'SIGNUPS_PER_ADDRESS'),
+    loginAttemptsPerAddress: readPositiveInteger(env, 'LOGIN_ATTEMPTS_PER_ADDRESS'),
   };
+}
+
+function readPositiveInteger(env: NodeJS.ProcessEnv, name: string): number | undefined {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return undefined;
+  if (!/^[1-9][0-9]*$/.test(raw)) throw new Error(`${name} inválido: ${raw}`);
+  return Number(raw);
 }
 
 /** Accepts true/false/1/0 (any case); anything else is a configuration error. */

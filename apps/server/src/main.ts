@@ -1,9 +1,16 @@
 import { createDatabase, createPool } from '@orbit/database';
 import { createGameServer } from './app';
 import { readServerConfig } from './config';
-import { IdentityService } from './modules/identity/identity-service';
+import { DEFAULT_IDENTITY_POLICY, IdentityService } from './modules/identity/identity-service';
 import { createArgon2Hasher } from './modules/identity/password-hasher';
 import { configureProcessCors } from './transport/http/cors-policy';
+
+// Colyseus shuts the whole process down on an uncaught error. A stray rejection in
+// one room must not end every match; record it instead (name and message only).
+process.on('unhandledRejection', (reason) => {
+  const name = reason instanceof Error ? `${reason.name}: ${reason.message}` : typeof reason;
+  console.error(`[orbit] rejeição não tratada: ${name}`);
+});
 
 const config = readServerConfig();
 configureProcessCors({
@@ -14,6 +21,12 @@ const pool = createPool({ connectionString: config.databaseUrl, max: 10 });
 const identity = new IdentityService({
   db: createDatabase(pool),
   hasher: createArgon2Hasher({ maxConcurrent: 2, maxQueue: 64 }),
+  policy: {
+    ...DEFAULT_IDENTITY_POLICY,
+    signUpsPerAddress: config.signUpsPerAddress ?? DEFAULT_IDENTITY_POLICY.signUpsPerAddress,
+    loginAttemptsPerAddress:
+      config.loginAttemptsPerAddress ?? DEFAULT_IDENTITY_POLICY.loginAttemptsPerAddress,
+  },
 });
 const server = createGameServer(config, { identity });
 server.onShutdown(() => pool.end());
