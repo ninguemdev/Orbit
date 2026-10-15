@@ -198,23 +198,25 @@ test('two browsers share the room, walk, and see the same ship being piloted', a
     });
     await expect(bravo.getByTestId('hud')).not.toContainText('reconectando', { timeout: 10_000 });
     expect(await sessionId(alfa)).toBe(alfaId);
-    // Measured once both views settled: right after reconnecting, the last movement may
-    // still be arriving.
+    // Keys move the crew relative to the screen and the ship may have turned while
+    // piloted, so press the key that points into the ship (local -x, away from the
+    // console the crew member stands at).
     const [settledBefore] = await settled(alfa, bravo);
     const before = settledBefore.crew[alfaId];
-    // In CI the first key presses right after reconnecting sometimes have no effect;
-    // pressing again must move the same crew member.
-    await expect
-      .poll(
-        async () => {
-          await hold(alfa, 'KeyA', 300);
-          return (await world(alfa)).crew[alfaId]?.x ?? Infinity;
-        },
-        { timeout: 10_000 },
-      )
-      .toBeLessThan((before?.x ?? -Infinity) - 10);
+    const { angle } = settledBefore.ship;
+    const inward = { x: -Math.cos(angle), y: -Math.sin(angle) }; // local -x on screen
+    const keys = [
+      { key: 'KeyA', x: -1, y: 0 },
+      { key: 'KeyD', x: 1, y: 0 },
+      { key: 'KeyW', x: 0, y: -1 },
+      { key: 'KeyS', x: 0, y: 1 },
+    ];
+    const best = keys.reduce((a, b) =>
+      a.x * inward.x + a.y * inward.y >= b.x * inward.x + b.y * inward.y ? a : b,
+    );
+    await hold(alfa, best.key, 500);
     const [a, b] = await settled(alfa, bravo);
-    expect(a.crew[alfaId]?.x).toBeLessThan(before?.x ?? -Infinity);
+    expect(a.crew[alfaId]?.x).toBeLessThan((before?.x ?? -Infinity) - 10);
     expect(b.crew[alfaId]).toEqual(a.crew[alfaId]);
   });
 });
