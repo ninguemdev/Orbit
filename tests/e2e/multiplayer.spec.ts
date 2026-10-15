@@ -21,6 +21,14 @@ declare global {
   }
 }
 
+/** Cuts the real TCP connections of one session at the E2E drop proxy. */
+async function dropConnection(id: string, refuseMs: number) {
+  const response = await fetch(`http://127.0.0.1:2569/cut?sessionId=${id}&ms=${refuseMs}`, {
+    method: 'POST',
+  });
+  return ((await response.json()) as { cut: number }).cut;
+}
+
 async function joinAs(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 1100, height: 700 } });
   const page = await context.newPage();
@@ -96,6 +104,7 @@ async function settled(a: Page, b: Page): Promise<[WorldView, WorldView]> {
 test('two browsers share the room, walk, and see the same ship being piloted', async ({
   browser,
 }) => {
+  test.setTimeout(120_000);
   const alfa = await joinAs(browser, 'Alfa');
   const bravo = await joinAs(browser, 'Bravo');
   const alfaId = await sessionId(alfa);
@@ -151,13 +160,10 @@ test('two browsers share the room, walk, and see the same ship being piloted', a
   });
 
   await test.step('a short network drop reconnects to the same crew member', async () => {
-    const context = alfa.context();
-    await context.setOffline(true);
-    // Detected by the server heartbeat or the client socket closing, whichever comes first.
-    await expect(bravo.getByTestId('hud')).toContainText('Alfa — reconectando', {
-      timeout: 20_000,
-    });
-    await context.setOffline(false);
+    // Real TCP connections are cut and new ones refused for 3 s.
+    expect(await dropConnection(alfaId, 3000)).toBeGreaterThan(0);
+    await expect(alfa.getByTestId('connection-status')).toContainText('Reconectando');
+    await expect(bravo.getByTestId('hud')).toContainText('Alfa — reconectando');
     await expect(alfa.getByTestId('connection-status')).toContainText('Conectado', {
       timeout: 20_000,
     });

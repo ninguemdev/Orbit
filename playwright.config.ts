@@ -1,11 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const SERVER_PORT = 2567;
+/** The client connects to this port; a drop proxy forwards it to the game server. */
+const PUBLIC_SERVER_PORT = 2567;
+const SERVER_PORT = 2568;
+const PROXY_CONTROL_PORT = 2569;
 const WEB_PORT = 4173;
 
 /**
  * Multiplayer gate against the production build: the bundled server (node
  * dist/main.js) and the built client served by `vite preview`. Run `pnpm build` first.
+ * A TCP proxy in front of the server lets tests simulate network drops.
  */
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -28,6 +32,16 @@ export default defineConfig({
         HOST: '127.0.0.1',
         PORT: String(SERVER_PORT),
         ALLOWED_ORIGINS: `http://127.0.0.1:${WEB_PORT}`,
+      },
+    },
+    {
+      command: 'node tests/e2e/support/drop-proxy.mjs',
+      port: PUBLIC_SERVER_PORT,
+      reuseExistingServer: false,
+      env: {
+        PROXY_PORT: String(PUBLIC_SERVER_PORT),
+        TARGET_PORT: String(SERVER_PORT),
+        CONTROL_PORT: String(PROXY_CONTROL_PORT),
       },
     },
     {
