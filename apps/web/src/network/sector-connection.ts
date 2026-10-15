@@ -54,7 +54,7 @@ export interface SectorBridge {
 
 export function defaultServerEndpoint(): string {
   const configured = import.meta.env['VITE_SERVER_URL'] as string | undefined;
-  return configured ?? `${window.location.protocol}//${window.location.hostname}:2567`;
+  return configured || `${window.location.protocol}//${window.location.hostname}:2567`;
 }
 
 const PING_INTERVAL_MS = 2000;

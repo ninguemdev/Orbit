@@ -2,13 +2,22 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { Database } from '../client';
 import { accountRecovery, accounts, sessions } from '../schema';
 
-/** Replaces any unused code of the account with a new one (stored as SHA-256 hex). */
+/**
+ * Replaces any unused code of the account with a new one (stored as SHA-256 hex).
+ * The account row is locked first, so concurrent generations run one after the
+ * other instead of colliding on the one-unused-code index.
+ */
 export async function replaceRecoveryCode(
   db: Database,
   accountId: string,
   codeHash: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    await tx
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.id, accountId))
+      .for('update');
     await tx
       .delete(accountRecovery)
       .where(and(eq(accountRecovery.accountId, accountId), isNull(accountRecovery.usedAt)));

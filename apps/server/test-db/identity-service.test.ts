@@ -67,6 +67,17 @@ describe('IdentityService limits and session lifetime', () => {
     expect((await attempt()).ok).toBe(true);
   });
 
+  it('limits recovery attempts per address', async () => {
+    const attempt = () =>
+      service.recover(
+        { nick: 'Lim_2', code: 'AAAA-BBBB', newPassword: 'senha nova muito longa' },
+        '10.0.0.20',
+      );
+    for (let i = 0; i < 3; i++)
+      expect(await attempt()).toEqual({ ok: false, code: 'invalid_recovery' });
+    expect(await attempt()).toEqual({ ok: false, code: 'rate_limited' });
+  });
+
   it('expires sessions after the configured lifetime', async () => {
     const signedIn = await service.login(
       { nick: 'Lim_2', password: 'senha suficientemente longa' },

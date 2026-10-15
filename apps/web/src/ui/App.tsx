@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MeResponse } from '@orbit/contracts';
 import { accountClient, describeAccountError } from '../network/account-client';
 import { installDebugHook } from '../network/debug-hook';
@@ -9,7 +9,7 @@ import { Hud } from './Hud';
 import { RecoveryCodePanel } from './RecoveryCodePanel';
 
 type Screen =
-  | { kind: 'loading' }
+  | { kind: 'loading'; error?: string }
   | { kind: 'access'; notice?: string }
   | { kind: 'home'; me: MeResponse; suggestRecovery: boolean; error?: string }
   | { kind: 'connecting'; me: MeResponse }
@@ -29,13 +29,22 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
   const [economy, setEconomy] = useState(readEconomyPreference);
 
-  useEffect(() => {
-    void accountClient.me().then((result) => {
-      setScreen(
-        result.ok ? { kind: 'home', me: result.data, suggestRecovery: false } : { kind: 'access' },
-      );
-    });
+  // Only a missing/expired session leads to the access screen; transient failures
+  // (network, overload) keep the player where they are and offer a retry.
+  const loadSession = useCallback(async () => {
+    setScreen({ kind: 'loading' });
+    const result = await accountClient.me();
+    if (result.ok) setScreen({ kind: 'home', me: result.data, suggestRecovery: false });
+    else if (result.code === 'unauthenticated') setScreen({ kind: 'access' });
+    else setScreen({ kind: 'loading', error: describeAccountError(result.code) });
   }, []);
+
+  useEffect(() => {
+    void loadSession();
+  }, [loadSession]);
+
+  /** Incremented on sign-out so a join still in flight does not enter the room. */
+  const joinAttempt = useRef(0);
 
   const toggleEconomy = useCallback(() => {
     setEconomy((current) => {
@@ -53,23 +62,44 @@ export function App() {
     const result = await accountClient.me();
     setScreen((current) => {
       if (current.kind !== 'home') return current;
-      return result.ok
-        ? { ...current, me: result.data, suggestRecovery: false }
-        : { kind: 'access', notice: describeAccountError(result.code) };
+      if (result.ok) return { ...current, me: result.data, suggestRecovery: false };
+      if (result.code === 'unauthenticated') {
+        return { kind: 'access', notice: describeAccountError(result.code) };
+      }
+      // Keep the screen (and any recovery code on display); the status refreshes later.
+      return { ...current, suggestRecovery: false };
     });
   }, []);
 
-  const signOut = async () => {
-    await accountClient.logout();
-    setScreen({ kind: 'access', notice: 'Você saiu da conta.' });
+  const signOut = async (me: MeResponse) => {
+    joinAttempt.current++;
+    const result = await accountClient.logout();
+    // An already-dead session counts as signed out; any other failure means the
+    // cookie may still be valid, so the player must know they are still signed in.
+    if (result.ok || result.code === 'unauthenticated') {
+      setScreen({ kind: 'access', notice: 'Você saiu da conta.' });
+    } else {
+      setScreen({
+        kind: 'home',
+        me,
+        suggestRecovery: false,
+        error: `Não foi possível sair da conta. ${describeAccountError(result.code)}`,
+      });
+    }
   };
 
   const join = async (me: MeResponse) => {
+    const attempt = ++joinAttempt.current;
     setScreen({ kind: 'connecting', me });
     try {
       const connection = await SectorConnection.join(defaultServerEndpoint(), me.account.nick);
+      if (attempt !== joinAttempt.current) {
+        void connection.leave();
+        return;
+      }
       setScreen({ kind: 'playing', me, connection });
     } catch {
+      if (attempt !== joinAttempt.current) return;
       setScreen({
         kind: 'home',
         me,
@@ -101,7 +131,18 @@ export function App() {
       return (
         <main className="menu">
           <h1>Orbit</h1>
-          <p>Carregando…</p>
+          {screen.error ? (
+            <>
+              <p role="alert" className="error">
+                {screen.error}
+              </p>
+              <button type="button" onClick={() => void loadSession()}>
+                Tentar de novo
+              </button>
+            </>
+          ) : (
+            <p>Carregando…</p>
+          )}
         </main>
       );
     case 'access':
@@ -149,7 +190,12 @@ export function App() {
             <button type="button" disabled={screen.kind === 'connecting'} onClick={() => join(me)}>
               {screen.kind === 'connecting' ? 'Conectando…' : 'Entrar na sala'}
             </button>
-            <button type="button" className="secondary" onClick={signOut}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={screen.kind === 'connecting'}
+              onClick={() => void signOut(me)}
+            >
               Sair da conta
             </button>
           </div>

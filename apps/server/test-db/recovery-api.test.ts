@@ -107,14 +107,27 @@ describe('account recovery with an optional code', () => {
     expect(results.map((result) => result.status).sort()).toEqual([200, 401]);
   });
 
-  it('limits recovery attempts per nick', async () => {
-    await accountWithCode('Forca_Bruta');
-    const attempts = await Promise.all(
-      Array.from({ length: 8 }, (_, i) => recover('Forca_Bruta', `ZZZZ-${i}`)),
+  it('does not let bogus attempts lock the owner out of recovery', async () => {
+    const { code } = await accountWithCode('Dono_Legitimo');
+    await Promise.all(Array.from({ length: 12 }, (_, i) => recover('Dono_Legitimo', `ZZZZ-${i}`)));
+    expect((await recover('Dono_Legitimo', code)).status).toBe(200);
+  });
+
+  it('serializes simultaneous code generations, leaving exactly one valid code', async () => {
+    const signUp = await post(AccountRoute.Accounts, { nick: 'Duas_Abas', password: PASSWORD });
+    const results = await Promise.all([
+      post(AccountRoute.MyRecoveryCode, {}, signUp.token ?? ''),
+      post(AccountRoute.MyRecoveryCode, {}, signUp.token ?? ''),
+    ]);
+    expect(results.map((result) => result.status)).toEqual([201, 201]);
+    const unused = await api.pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM account_recovery r JOIN accounts a ON a.id = r.account_id
+        WHERE a.nick = 'Duas_Abas' AND r.used_at IS NULL`,
     );
-    const statuses = attempts.map((attempt) => attempt.status);
-    expect(statuses.filter((status) => status === 429)).toHaveLength(
-      8 - DEFAULT_IDENTITY_POLICY.loginFailuresPerNick,
-    );
+    expect(unused.rows[0]?.count).toBe(1);
+    const codes = results.map((result) => (result.body as RecoveryCodeResponse).code);
+    const outcomes = [];
+    for (const code of codes) outcomes.push((await recover('Duas_Abas', code)).status);
+    expect(outcomes.sort()).toEqual([200, 401]);
   });
 });
