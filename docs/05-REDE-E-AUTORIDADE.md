@@ -74,6 +74,16 @@ Verificado com Colyseus 0.18 (core 0.18.18, schema 5.0.39, SDK 0.18.5) em testes
 - **Latência:** `server.simulateLatency(ms)` permitiu ensaiar 150 ms de RTT nos testes de integração, com estados idênticos nos dois clientes.
 - **Limites:** `maxClients`, `maxMessagesPerSecond` (desconecta ao exceder) e `maxPayload` do transporte estão configurados. Limite de conexões por IP/conta ainda não existe; depende de identidade (0.2) e do proxy (operação).
 
+## Conta e sessão (0.2)
+
+- **Hash:** Argon2id (`@node-rs/argon2`) com 19 MiB, 2 iterações e paralelismo 1. No máximo dois hashes simultâneos e fila limitada; acima dela a API responde 503. Nick inexistente gasta o mesmo trabalho de uma senha errada e recebe a mesma resposta.
+- **Sessão:** token aleatório de 256 bits em cookie HttpOnly, SameSite=Strict, 7 dias, `Secure` em produção. O banco guarda só o SHA-256. Logout revoga no servidor. A atividade é registrada no máximo a cada 5 minutos.
+- **Escritas:** exigem Origin permitida e `Content-Type: application/json`. Isso força preflight e, junto com SameSite=Strict, bloqueia CSRF.
+- **CORS:** o Colyseus 0.18 responde a toda requisição HTTP (matchmaking e `/api`) por um listener próprio que, por padrão, reflete qualquer Origin com credenciais e aceita qualquer preflight. O servidor substitui `matchMaker.controller.getCorsHeaders` e `DEFAULT_CORS_HEADERS`: só origens de `ALLOWED_ORIGINS` recebem `Access-Control-Allow-Origin` e credenciais.
+- **Limites:** login por endereço, tentativas por nick (5 sem sucesso em 15 minutos bloqueiam o nick, inclusive para a senha certa; cada tentativa conta antes do hash, então chutes simultâneos não escapam) e cadastro por endereço. Endereços IPv6 contam por /64. Atrás de proxy reverso, `TRUST_PROXY` informa quantos saltos confiar para obter o IP real. Os contadores ficam em memória do processo, com tamanho limitado (os mais antigos saem primeiro sob inundação de chaves); vários processos exigirão armazenamento compartilhado.
+- **Hash e enumeração:** o hash fictício usado para nicks inexistentes é calculado uma vez, fora da fila, e não fica em cache se falhar; o semáforo entrega a vaga direto ao próximo da fila.
+- **Logs:** erros inesperados registram só tipo e código, nunca a mensagem do driver, que traz parâmetros SQL.
+
 ## Entrada, previsão e reconciliação
 
 Enviar entrada contínua no máximo à frequência do tick, inicialmente 20 mensagens/s por jogador, com sequência monotônica. Cada tick aplica uma entrada de movimento efetiva; receber 100 mensagens não pode produzir 100 passos. Limitar fila e descartar entradas vencidas, duplicadas ou muito à frente.

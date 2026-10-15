@@ -25,6 +25,10 @@
 | D19 | Respeitar o `minimumReleaseAge` do pnpm sem exceções; versões com menos de um dia esperam | Adotada na 0.1 | Correção de segurança que afete o projeto |
 | D20 | Sala de desenvolvimento anônima, com Origin e `protocolVersion` validados; contas e ticket de assento substituem na 0.2 | Temporária (0.1) | V02.02 |
 | D21 | Drizzle 0.45.4 + drizzle-kit 0.31.11 estáveis com `pg`; migração baseline `app_metadata` | Adotada na 0.1 | Ao migrar para Drizzle 1.0 estável |
+| D22 | Argon2id via `@node-rs/argon2` (binários pré-compilados, sem script de instalação), máximo de 2 hashes simultâneos | Adotada na 0.2 | Medição de capacidade na máquina alvo |
+| D23 | Limites de login/cadastro em memória do processo | Adotada na 0.2 | Ao rodar mais de um processo de jogo |
+| D24 | Substituir a política de CORS padrão do Colyseus (reflete qualquer Origin com credenciais) pela lista `ALLOWED_ORIGINS` | Adotada na 0.2 | Se o Colyseus mudar o padrão |
+| D25 | Servidor de jogo exige `DATABASE_URL` desde a 0.2 | Adotada na 0.2 | — |
 
 Quando modificar uma decisão, registrar motivação, nova regra e documentos/tarefas afetados. Não alterar silenciosamente números centrais como velocidade de boost ou elegibilidade de extração.
 

@@ -7,6 +7,11 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 ### Adicionado
 
 - Tabelas de identidade (`accounts`, `sessions`, `account_recovery`, `profiles`) com nick único sem diferenciar maiúsculas, apenas hashes Argon2id/SHA-256 e testes de integração SQL (`pnpm test:db`).
+- API de conta: cadastro com nick e senha, login, logout com revogação, `GET /api/me` e alteração da própria cor, com sessão em cookie HttpOnly/SameSite=Strict, Argon2id, limites de tentativa, proteção de Origin/CSRF e CORS restrito às origens permitidas.
+
+### Alterado
+
+- O servidor de jogo exige `DATABASE_URL`; rode `pnpm db:up` e `pnpm db:migrate` antes do `pnpm dev`.
 
 ## 0.1.0 — 2026-10-15
 
