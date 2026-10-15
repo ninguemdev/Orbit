@@ -14,6 +14,8 @@ export interface PartyRoomHandle {
   notifyInvite(accountId: string, notice: PartyInviteNotice): boolean;
   /** Removes a member who has just joined another party. */
   evict(accountId: string): void;
+  /** Something the mission depends on changed outside the room (e.g. the loadout). */
+  preparationChanged(accountId: string): void;
 }
 
 export interface PartyInvite {
@@ -53,6 +55,12 @@ export class PartyDirectory {
   register(room: PartyRoomHandle): void {
     this.#rooms.set(room.roomId, room);
     this.#roomByCode.set(room.inviteCode, room.roomId);
+  }
+
+  /** Tells the party of an online account that its preparation changed. */
+  preparationChanged(accountId: string): void {
+    const membership = this.#membership.get(accountId);
+    if (membership) this.#rooms.get(membership.roomId)?.preparationChanged(accountId);
   }
 
   unregister(room: PartyRoomHandle): void {

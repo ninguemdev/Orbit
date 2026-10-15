@@ -10,7 +10,7 @@ import { RoomTicketStore } from './modules/party/room-tickets';
 import { isOriginAllowed } from './transport/access-policy';
 import { defineDevSectorRoom } from './transport/dev-sector-room';
 import { createAccountApi } from './transport/http/account-routes';
-import { type ClassPreferences, definePartyRoom } from './transport/party-room';
+import { type ClassPreferences, type LoadoutReader, definePartyRoom } from './transport/party-room';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -20,6 +20,8 @@ export interface GameServices {
   readonly identity?: IdentityService;
   /** Persists class choices made in parties. */
   readonly classPreferences?: ClassPreferences;
+  /** Saved loadouts, checked when members get ready and when the leader confirms. */
+  readonly loadouts?: LoadoutReader;
   /** Database for inventory routes. */
   readonly db?: Database;
   /** Invite code attempts allowed per address (PARTY_CODE_GUESSES_PER_ADDRESS). */
@@ -61,6 +63,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
                 identity,
                 party,
                 ...(services.db ? { db: services.db } : {}),
+                onLoadoutChanged: (accountId) => directory.preparationChanged(accountId),
                 access: policy,
                 cookie: { secure: config.cookieSecure },
               }),
@@ -83,6 +86,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
       tickets,
       directory,
       ...(services.classPreferences ? { classPreferences: services.classPreferences } : {}),
+      ...(services.loadouts ? { loadouts: services.loadouts } : {}),
     }),
   );
   return server;

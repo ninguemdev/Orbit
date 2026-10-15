@@ -14,6 +14,9 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
   const [nick, setNick] = useState('');
   const { view } = party;
   const isLeader = view?.leaderId === myAccountId;
+  const me = view?.members.find((member) => member.accountId === myAccountId);
+  const allReady =
+    view !== null && view.members.every((member) => member.ready && member.connected);
   const myClass = view?.members.find((member) => member.accountId === myAccountId)?.classId ?? '';
 
   // Union of the members' licenses, with who brings each ship (arrival order).
@@ -55,6 +58,7 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
                 {member.accountId === view.leaderId ? ' — líder' : ''}
                 {member.accountId === myAccountId ? ' (você)' : ''}
                 {member.connected ? '' : ' — desconectado'}
+                {member.ready ? ' — pronto' : ''}
                 {isLeader && member.accountId !== myAccountId ? (
                   <span className="member-actions">
                     <button type="button" onClick={() => party.promote(member.accountId)}>
@@ -139,6 +143,37 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
               </span>
             </label>
           ))}
+        </fieldset>
+      ) : null}
+
+      {view ? (
+        <fieldset className="class-picker" data-testid="party-readiness">
+          <legend>Prontidão</legend>
+          <p className="hint">
+            Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos.
+            A missão e a reserva dos itens começam na 0.3.
+          </p>
+          {view.confirmedRevision === view.revision ? (
+            <p className="notice" data-testid="party-confirmed">
+              Preparação confirmada pelo líder.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => party.setReady(view.revision, !me?.ready)}
+            disabled={!me}
+          >
+            {me?.ready ? 'Não estou pronto' : 'Estou pronto'}
+          </button>{' '}
+          {isLeader ? (
+            <button
+              type="button"
+              disabled={!allReady || !view.selectedShipId}
+              onClick={() => party.confirm(view.revision)}
+            >
+              Confirmar preparação
+            </button>
+          ) : null}
         </fieldset>
       ) : null}
 

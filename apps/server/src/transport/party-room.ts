@@ -12,8 +12,10 @@ import {
   PartyServerMessage,
   partyInviteSchema,
   partyMemberTargetSchema,
+  partyConfirmSchema,
   partySelectClassSchema,
   partySelectShipSchema,
+  partySetReadySchema,
 } from '@orbit/contracts';
 import { SHIP_ORDER, isClassId } from '@orbit/catalog';
 import type { PartyDirectory, PartyRoomHandle } from '../modules/party/party-directory';
@@ -25,10 +27,34 @@ export interface ClassPreferences {
   save(accountId: string, classId: string): Promise<void>;
 }
 
+/** Saved loadout of an account, checked against its saved class (the database). */
+export interface LoadoutReader {
+  loadout(accountId: string): Promise<readonly PreparedItem[]>;
+}
+
+export interface PreparedItem {
+  readonly slot: string;
+  readonly instanceId: string;
+  readonly issue: string | null;
+}
+
+/** What the leader confirmed: the roster of one revision, kept for the mission (0.3). */
+export interface PreparationProposal {
+  readonly revision: number;
+  readonly shipId: string;
+  readonly members: readonly {
+    readonly accountId: string;
+    readonly classId: string;
+    readonly loadout: readonly PreparedItem[];
+  }[];
+}
+
 export interface PartyRoomDeps {
   readonly tickets: RoomTicketStore;
   readonly directory: PartyDirectory;
   readonly classPreferences?: ClassPreferences;
+  /** Without it (tests without a database) every loadout counts as empty and valid. */
+  readonly loadouts?: LoadoutReader;
   readonly now?: () => number;
 }
 
@@ -107,6 +133,7 @@ export class PartyRoom
       // Each member chooses their own class; repeated classes are allowed.
       const preferences = this.#deps.classPreferences;
       if (!preferences) {
+        if (member.classId !== classId) this.#changed();
         member.classId = classId;
         return;
       }
@@ -124,7 +151,10 @@ export class PartyRoom
           return;
         }
         const current = this.state.members.get(accountId);
-        if (current) current.classId = classId;
+        if (current && current.classId !== classId) {
+          current.classId = classId;
+          this.#changed();
+        }
       });
       this.#classSaves.set(accountId, next);
       void next.finally(() => {
@@ -140,7 +170,23 @@ export class PartyRoom
       if (!this.#availableShips().has(parsed.data.shipId)) {
         return this.#refuse(client, action, PartyErrorCode.ShipUnavailable);
       }
+      if (this.state.selectedShipId === parsed.data.shipId) return;
       this.state.selectedShipId = parsed.data.shipId;
+      this.#changed();
+    });
+    this.onMessage(PartyClientMessage.SetReady, (client: PartyClient, raw: unknown) => {
+      const parsed = partySetReadySchema.safeParse(raw);
+      if (!parsed.success) {
+        return this.#refuse(client, PartyClientMessage.SetReady, PartyErrorCode.InvalidPayload);
+      }
+      void this.#setReady(client, parsed.data.revision, parsed.data.ready);
+    });
+    this.onMessage(PartyClientMessage.Confirm, (client: PartyClient, raw: unknown) => {
+      const parsed = partyConfirmSchema.safeParse(raw);
+      if (!parsed.success) {
+        return this.#refuse(client, PartyClientMessage.Confirm, PartyErrorCode.InvalidPayload);
+      }
+      void this.#confirm(client, parsed.data.revision);
     });
     this.onMessage('*', (client: PartyClient, type) => {
       this.#refuse(client, String(type), PartyErrorCode.InvalidPayload);
@@ -180,6 +226,7 @@ export class PartyRoom
     this.#clients.set(accountId, client);
     this.#removed.delete(accountId);
     this.#deps.directory.joined(accountId, nick, this.roomId);
+    this.#changed();
   }
 
   override onDrop(client: PartyClient): void {
@@ -188,6 +235,8 @@ export class PartyRoom
     if (!accountId || this.#clients.get(accountId) !== client) return;
     const member = this.state.members.get(accountId);
     if (member) member.connected = false;
+    // A dropped member cannot confirm anything: readiness starts over.
+    this.#changed();
     if (!this.#removed.has(accountId)) {
       // Rejects when the client dropped before finishing the join handshake or when the
       // seat expires; Colyseus then calls onLeave. Unhandled, it would end the process.
@@ -246,6 +295,15 @@ export class PartyRoom
 
   evict(accountId: string): void {
     this.#removeOnPurpose(accountId, PARTY_MOVED_CLOSE_CODE, 'moved_to_another_party');
+  }
+
+  preparationChanged(accountId: string): void {
+    if (this.state.members.has(accountId)) this.#changed();
+  }
+
+  /** The confirmed proposal of the current revision, if any. */
+  get proposal(): PreparationProposal | null {
+    return this.#proposal;
   }
 
   // Rules ------------------------------------------------------------------------
@@ -313,6 +371,7 @@ export class PartyRoom
 
   #removeMember(accountId: string): void {
     if (!this.state.members.delete(accountId)) return;
+    this.#changed();
     this.#deps.directory.left(accountId, this.roomId);
     if (this.state.leaderId === accountId) this.state.leaderId = this.#nextLeader();
     // The last owner of the selected ship left: the choice is no longer valid.
@@ -340,6 +399,98 @@ export class PartyRoom
 
   /** Pending class saves per account, chained so they finish in order. */
   readonly #classSaves = new Map<string, Promise<void>>();
+  #proposal: PreparationProposal | null = null;
+
+  // Preparation -----------------------------------------------------------------
+
+  /**
+   * A change that matters for the mission: a new revision, nobody ready, and no
+   * confirmation. Requests naming the previous revision will fail.
+   */
+  #changed(): void {
+    this.state.revision += 1;
+    this.state.confirmedRevision = 0;
+    this.#proposal = null;
+    this.state.members.forEach((member) => {
+      member.ready = false;
+    });
+  }
+
+  /** Problems that keep a member from being ready, read from the saved loadout. */
+  async #loadoutOf(accountId: string): Promise<readonly PreparedItem[]> {
+    return (await this.#deps.loadouts?.loadout(accountId)) ?? [];
+  }
+
+  async #setReady(client: PartyClient, revision: number, ready: boolean): Promise<void> {
+    const action = PartyClientMessage.SetReady;
+    const accountId = client.auth?.accountId;
+    const member = accountId ? this.state.members.get(accountId) : undefined;
+    if (!accountId || !member || this.#clients.get(accountId) !== client) {
+      return this.#refuse(client, action, PartyErrorCode.NotMember);
+    }
+    if (revision !== this.state.revision) {
+      return this.#refuse(client, action, PartyErrorCode.StaleRevision);
+    }
+    if (!ready) {
+      member.ready = false;
+      // A confirmation needs everyone ready; it no longer holds.
+      this.state.confirmedRevision = 0;
+      this.#proposal = null;
+      return;
+    }
+    if (!member.classId) return this.#refuse(client, action, PartyErrorCode.ClassMissing);
+    let loadout: readonly PreparedItem[];
+    try {
+      loadout = await this.#loadoutOf(accountId);
+    } catch {
+      return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);
+    }
+    // Anything may have changed while the loadout was read.
+    if (revision !== this.state.revision || this.state.members.get(accountId) !== member) {
+      return this.#refuse(client, action, PartyErrorCode.StaleRevision);
+    }
+    if (loadout.some((item) => item.issue !== null)) {
+      return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);
+    }
+    member.ready = true;
+  }
+
+  async #confirm(client: PartyClient, revision: number): Promise<void> {
+    const action = PartyClientMessage.Confirm;
+    if (!this.#isLeader(client)) return this.#refuse(client, action, PartyErrorCode.NotLeader);
+    if (revision !== this.state.revision) {
+      return this.#refuse(client, action, PartyErrorCode.StaleRevision);
+    }
+    const shipId = this.state.selectedShipId;
+    if (!shipId) return this.#refuse(client, action, PartyErrorCode.ShipMissing);
+    const members = [...this.state.members.values()];
+    if (members.some((member) => !member.ready || !member.connected)) {
+      return this.#refuse(client, action, PartyErrorCode.MembersNotReady);
+    }
+    // The loadouts are read again: the proposal records exactly what each member takes.
+    let loadouts: (readonly PreparedItem[])[];
+    try {
+      loadouts = await Promise.all(members.map((member) => this.#loadoutOf(member.accountId)));
+    } catch {
+      return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);
+    }
+    if (revision !== this.state.revision) {
+      return this.#refuse(client, action, PartyErrorCode.StaleRevision);
+    }
+    if (loadouts.some((loadout) => loadout.some((item) => item.issue !== null))) {
+      return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);
+    }
+    this.#proposal = {
+      revision,
+      shipId,
+      members: members.map((member, index) => ({
+        accountId: member.accountId,
+        classId: member.classId,
+        loadout: loadouts[index] ?? [],
+      })),
+    };
+    this.state.confirmedRevision = revision;
+  }
 
   #refuse(client: PartyClient, action: string, code: PartyErrorCode): void {
     const refusal: PartyRefusal = { action, code };

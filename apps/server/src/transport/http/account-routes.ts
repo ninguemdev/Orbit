@@ -43,6 +43,8 @@ export interface AccountApiOptions {
   readonly party?: PartyAccess;
   /** Inventory reads and stash moves; omitted by servers without inventory routes. */
   readonly db?: Database;
+  /** Called after a loadout is saved, so the player's party drops readiness. */
+  readonly onLoadoutChanged?: (accountId: string) => void;
   readonly now?: () => Date;
 }
 
@@ -253,6 +255,7 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
           response.status(422).json(body);
           return;
         }
+        options.onLoadoutChanged?.(session.accountId);
         await sendLoadout(response, session.accountId);
       }),
     );

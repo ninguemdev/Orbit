@@ -21,6 +21,7 @@ export interface PartyMember {
   readonly classId: string;
   /** Ship licenses this member brings to the party. */
   readonly ships: readonly string[];
+  readonly ready: boolean;
 }
 
 export interface PartyView {
@@ -28,6 +29,10 @@ export interface PartyView {
   readonly inviteCode: string;
   /** Ship chosen by the leader; empty when none is valid. */
   readonly selectedShipId: string;
+  /** Requests for readiness and confirmation name this revision. */
+  readonly revision: number;
+  /** Revision the leader confirmed; 0 when there is no valid confirmation. */
+  readonly confirmedRevision: number;
   /** Ordered by arrival. */
   readonly members: readonly PartyMember[];
 }
@@ -112,6 +117,14 @@ export class PartyConnection {
     this.#room.send(PartyClientMessage.SelectShip, { shipId });
   }
 
+  setReady(revision: number, ready: boolean): void {
+    this.#room.send(PartyClientMessage.SetReady, { revision, ready });
+  }
+
+  confirm(revision: number): void {
+    this.#room.send(PartyClientMessage.Confirm, { revision });
+  }
+
   /** Leaves on purpose; listeners are not told about this close. */
   async leave(): Promise<void> {
     this.#closedByUs = true;
@@ -135,6 +148,7 @@ function toView(state: PartyStateView): PartyView {
         connected: member.connected,
         classId: member.classId,
         ships: shipsOf(member.ships),
+        ready: member.ready,
       },
       joinedAt: member.joinedAt,
     });
@@ -144,6 +158,8 @@ function toView(state: PartyStateView): PartyView {
     leaderId: state.leaderId ?? '',
     inviteCode: state.inviteCode ?? '',
     selectedShipId: state.selectedShipId ?? '',
+    revision: state.revision ?? 0,
+    confirmedRevision: state.confirmedRevision ?? 0,
     members: members.map((entry) => entry.member),
   };
 }
