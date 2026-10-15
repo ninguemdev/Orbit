@@ -101,8 +101,8 @@ Copie `.env.example` para `.env` antes de tudo: o servidor exige `DATABASE_URL` 
 ### Abrir duas sessões no protótipo
 
 1. Rode `pnpm install --frozen-lockfile`, copie `.env.example` para `.env`, rode `pnpm db:up`, `pnpm db:migrate` e depois `pnpm dev`.
-2. Abra `http://127.0.0.1:5173` em duas janelas separadas (por exemplo, uma janela normal e outra anônima, ou dois navegadores).
-3. Em cada janela, informe um nome (opcional) e clique em **Entrar na sala**. As duas entram na mesma sala e aparecem na lista do painel.
+2. Abra `http://127.0.0.1:5173` em duas janelas separadas (por exemplo, uma janela normal e outra anônima, ou dois navegadores). Cada janela precisa da sua própria sessão.
+3. Em cada janela, crie uma conta em **Criar conta** (nick e senha de pelo menos 12 caracteres) ou entre com uma existente, e clique em **Entrar na sala**. As duas entram na mesma sala, identificadas pelo nick.
 4. **WASD** ou setas movem o tripulante dentro da nave. Para pilotar, passe pela porta da ponte até o círculo amarelo do console e pressione **E**. No comando, **W/S** aceleram/freiam e **A/D** giram. **E** ou **Esc** liberam o comando.
 5. A outra janela vê a mesma nave se mover. Se ela tentar assumir o comando ocupado, o painel informa o motivo.
 
@@ -117,6 +117,10 @@ Rotas JSON no servidor de jogo, com sessão em cookie `orbit_session` (HttpOnly,
 | `DELETE /api/sessions/current` | Logout, revogando a sessão no servidor |
 | `GET /api/me` | Conta e perfil da sessão |
 | `PATCH /api/me/profile` | Altera a cor do próprio perfil (opções do catálogo) |
+| `POST /api/me/recovery-code` | Gera um código de recuperação (mostrado uma vez; substitui o anterior) |
+| `POST /api/recovery` | Define nova senha com `{ nick, code, newPassword }`; o código vale uma vez e encerra as outras sessões |
+
+O cliente chama a API pela própria origem: em `pnpm dev` e `vite preview`, o Vite repassa `/api` ao servidor de jogo, como fará o proxy reverso em produção.
 
 Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGINS`. Login e cadastro têm limite por endereço e por nick. Atrás de proxy reverso, configure `TRUST_PROXY` com o número de saltos.
 
@@ -127,7 +131,8 @@ Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGIN
 - Sem previsão local: o próprio personagem aparece com cerca de 100 ms mais a latência. Os outros jogadores e a nave são interpolados; previsão e reconciliação do jogador local ficam para depois de estabilizar o fluxo.
 - Uma queda reserva o assento por 60 s. O tripulante aparece como "reconectando", e fechar a aba deixa o personagem na sala até esse prazo. A detecção depende do heartbeat do servidor e pode levar alguns segundos.
 - Um único setor fixo, um casco de nave e colisão por círculos contra asteroides. Não há dano, boost, consoles extras, EVA nem combate.
-- Cadastro, login, logout e perfil existem como API HTTP (`/api/accounts`, `/api/sessions`, `/api/me`), ainda sem tela no cliente (V02.03); a sala de desenvolvimento continua anônima.
+- A sala de desenvolvimento ainda não valida a sessão: o nick da conta é usado como rótulo, e o roster autenticado chega na V03.02.
+- Sem e-mail: quem perder a senha e não tiver gerado o código de recuperação não recupera a conta.
 - Sem deploy, HTTPS nem proxy. Use apenas em ambiente de desenvolvimento.
 
 Para contribuir, veja [CONTRIBUTING.md](CONTRIBUTING.md). Alterações de escopo precisam aparecer no roadmap e na matriz de requisitos.

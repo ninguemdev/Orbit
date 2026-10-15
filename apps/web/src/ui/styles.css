@@ -38,7 +38,7 @@ button {
   font: inherit;
 }
 
-.menu input[name='name'] {
+.menu input:not([type='checkbox']) {
   padding: 0.5rem;
   border: 1px solid #34445e;
   border-radius: 4px;
@@ -103,4 +103,49 @@ button:disabled {
 
 .notice {
   color: #ffc857;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.tab {
+  background: transparent;
+}
+
+.tab.active {
+  background: #1c2a42;
+  border-color: #9fb3cf;
+}
+
+.hint {
+  margin: 0;
+  color: #9fb3cf;
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+button.secondary {
+  background: transparent;
+}
+
+.recovery {
+  margin-top: 1.5rem;
+  padding: 0.75rem;
+  border: 1px solid #24314a;
+  border-radius: 6px;
+}
+
+.recovery .code {
+  font-family: monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+  word-break: break-all;
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { DEFAULT_APPEARANCE_COLOR, isAppearanceColorId } from '@orbit/catalog';
 import {
   AccountErrorCode,
@@ -6,6 +7,7 @@ import {
   loginSchema,
   nickSchema,
   normalizeNick,
+  recoverySchema,
 } from '@orbit/contracts';
 import {
   type ActiveSession,
@@ -15,12 +17,16 @@ import {
   findAccountByNick,
   findActiveSession,
   getProfile,
+  hasUnusedRecoveryCode,
+  redeemRecoveryCode,
+  replaceRecoveryCode,
   revokeSession,
   touchSession,
   updateProfileColor,
 } from '@orbit/database';
 import { SlidingWindowLimiter } from '../../infrastructure/sliding-window-limiter';
 import type { PasswordHasher } from './password-hasher';
+import { generateRecoveryCode, hashRecoveryCode } from './recovery-code';
 import { generateSessionToken, hashSessionToken, isWellFormedToken } from './session-token';
 
 export interface IdentityPolicy {
@@ -68,6 +74,7 @@ export class IdentityService {
   readonly #loginByAddress: SlidingWindowLimiter;
   readonly #failuresByNick: SlidingWindowLimiter;
   readonly #signUpsByAddress: SlidingWindowLimiter;
+  readonly #recoveryByAddress: SlidingWindowLimiter;
 
   constructor(deps: {
     db: Database;
@@ -90,6 +97,10 @@ export class IdentityService {
     });
     this.#signUpsByAddress = new SlidingWindowLimiter({
       limit: this.#policy.signUpsPerAddress,
+      ...window,
+    });
+    this.#recoveryByAddress = new SlidingWindowLimiter({
+      limit: this.#policy.loginAttemptsPerAddress,
       ...window,
     });
   }
@@ -164,12 +175,53 @@ export class IdentityService {
   }
 
   async me(accountId: string): Promise<MeResponse | null> {
-    const profile = await getProfile(this.#db, accountId);
+    const [profile, hasRecoveryCode] = await Promise.all([
+      getProfile(this.#db, accountId),
+      hasUnusedRecoveryCode(this.#db, accountId),
+    ]);
     if (!profile) return null;
     return {
       account: { id: profile.accountId, nick: profile.nick },
       profile: { colorId: profile.colorId },
+      hasRecoveryCode,
     };
+  }
+
+  /** Creates (or replaces) the caller's recovery code; the plain code is returned once. */
+  async createRecoveryCode(accountId: string): Promise<string> {
+    const code = generateRecoveryCode();
+    await replaceRecoveryCode(this.#db, accountId, hashRecoveryCode(code));
+    return code;
+  }
+
+  /**
+   * Sets a new password with nick + recovery code. The code works once; success
+   * revokes every session and opens a new one. Unknown nick, wrong code and used
+   * code get the same answer after the same work (hash and redemption transaction).
+   *
+   * Only the address is rate limited: a per-nick limit would let anyone keep the
+   * owner locked out, and a 160-bit code cannot be guessed anyway.
+   */
+  async recover(input: unknown, address: string): Promise<SignedIn | IdentityFailure> {
+    const parsed = recoverySchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: AccountErrorCode.InvalidInput };
+    if (!this.#recoveryByAddress.tryConsume(address)) {
+      return { ok: false, code: AccountErrorCode.RateLimited };
+    }
+    const validNick = nickSchema.safeParse(parsed.data.nick).success;
+    const account = validNick ? await findAccountByNick(this.#db, parsed.data.nick) : null;
+    const eligible = account?.status === 'active' ? account : null;
+    const newPasswordHash = await this.#hasher.hash(parsed.data.newPassword);
+    // Missing accounts run the same transaction against an ID that matches nothing.
+    const redeemed = await redeemRecoveryCode(this.#db, {
+      accountId: eligible?.id ?? randomUUID(),
+      codeHash: hashRecoveryCode(parsed.data.code),
+      newPasswordHash,
+      now: this.#now(),
+    });
+    if (!redeemed || !eligible) return { ok: false, code: AccountErrorCode.InvalidRecovery };
+    this.#failuresByNick.reset(normalizeNick(parsed.data.nick));
+    return this.#issue(eligible.id);
   }
 
   /** Changes the caller's own profile; the account always comes from the session. */

@@ -3,6 +3,7 @@ import {
   AccountErrorCode,
   type AccountErrorBody,
   AccountRoute,
+  type RecoveryCodeResponse,
   SESSION_COOKIE,
   updateProfileSchema,
 } from '@orbit/contracts';
@@ -28,6 +29,7 @@ const STATUS: Record<string, number> = {
   [AccountErrorCode.InvalidInput]: 400,
   [AccountErrorCode.Unauthenticated]: 401,
   [AccountErrorCode.InvalidCredentials]: 401,
+  [AccountErrorCode.InvalidRecovery]: 401,
   [AccountErrorCode.OriginNotAllowed]: 403,
   [AccountErrorCode.NickTaken]: 409,
   [AccountErrorCode.UnsupportedMediaType]: 415,
@@ -99,6 +101,20 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
   router.post(AccountRoute.Sessions, async (request, response) => {
     signedIn(response, await identity.login(request.body, address(request)), 200);
   });
+
+  router.post(AccountRoute.Recovery, async (request, response) => {
+    signedIn(response, await identity.recover(request.body, address(request)), 200);
+  });
+
+  router.post(
+    AccountRoute.MyRecoveryCode,
+    withSession(async (_request, response, session) => {
+      const body: RecoveryCodeResponse = {
+        code: await identity.createRecoveryCode(session.accountId),
+      };
+      response.status(201).json(body);
+    }),
+  );
 
   router.delete(AccountRoute.CurrentSession, async (request, response) => {
     // The cookie is cleared even when the session is already dead (expired, revoked,
