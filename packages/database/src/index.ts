@@ -5,3 +5,4 @@ export { createDatabase, isUniqueViolation, postgresError, type Database } from 
 export * from './identity/accounts';
 export * from './identity/sessions';
 export { createThrowawayDatabase, type ThrowawayDatabase } from './throwaway-database';
+export * from './identity/recovery';
