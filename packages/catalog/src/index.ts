@@ -199,3 +199,4 @@ export const SECTORS: Readonly<Record<SectorId, SectorDefinition>> = {
     shipSpawn: { position: { x: 0, y: 0 }, angle: 0 },
   },
 };
+export * from './items';

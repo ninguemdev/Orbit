@@ -1,6 +1,7 @@
 import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { DEV_ROOM_NAME, PARTY_ROOM_NAME } from '@orbit/contracts';
+import type { Database } from '@orbit/database';
 import type { ServerConfig } from './config';
 import type { IdentityService } from './modules/identity/identity-service';
 import { PartyAccess } from './modules/party/party-access';
@@ -19,6 +20,8 @@ export interface GameServices {
   readonly identity?: IdentityService;
   /** Persists class choices made in parties. */
   readonly classPreferences?: ClassPreferences;
+  /** Database for inventory routes. */
+  readonly db?: Database;
 }
 
 export function createGameServer(config: ServerConfig, services: GameServices = {}): Server {
@@ -49,6 +52,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
               createAccountApi({
                 identity,
                 party,
+                ...(services.db ? { db: services.db } : {}),
                 access: policy,
                 cookie: { secure: config.cookieSecure },
               }),

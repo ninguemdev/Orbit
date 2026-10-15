@@ -93,6 +93,7 @@ Executados e verificados no Windows 11 com Node 24.18.0 e pnpm 12.9.1, e no CI (
 | `pnpm db:up` / `pnpm db:down` | Sobe/derruba o PostgreSQL 18 de `infra/compose.dev.yml` |
 | `pnpm db:migrate` | Aplica as migrações em `DATABASE_URL` |
 | `pnpm db:smoke` | Cria um banco descartável, migra duas vezes, confere o schema e as conexões encerradas |
+| `pnpm db:seed-dev <nick>` | Concede um conjunto fixo de itens de teste a uma conta (recusado em produção) |
 | `pnpm test:db` | Testes de integração SQL (constraints, concorrência, rollback) em bancos descartáveis; exige `pnpm db:up` |
 | `pnpm build && pnpm e2e` | Teste multiplayer com dois navegadores sobre o build de produção |
 
@@ -127,6 +128,8 @@ Rotas JSON no servidor de jogo, com sessão em cookie `orbit_session` (HttpOnly,
 | `GET /api/me` | Conta e perfil da sessão |
 | `PATCH /api/me/profile` | Altera a cor do próprio perfil (opções do catálogo) |
 | `POST /api/me/recovery-code` | Gera um código de recuperação (mostrado uma vez; substitui o anterior) |
+| `GET /api/me/inventory` | Créditos, stash, caixa de recebimento e naves liberadas da própria conta |
+| `POST /api/me/stash/move` | Move um item entre espaços do próprio stash (`{ fromSlot, toSlot }`) |
 | `POST /api/recovery` | Define nova senha com `{ nick, code, newPassword }`; o código vale uma vez e encerra as outras sessões |
 
 O cliente chama a API pela própria origem: em `pnpm dev` e `vite preview`, o Vite repassa `/api` ao servidor de jogo, como fará o proxy reverso em produção.

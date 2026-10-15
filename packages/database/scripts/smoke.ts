@@ -31,7 +31,18 @@ try {
   );
   assert.deepEqual(
     tables.rows.map((row) => row.table_name),
-    ['account_recovery', 'accounts', 'app_metadata', 'profiles', 'sessions'],
+    [
+      'account_recovery',
+      'accounts',
+      'app_metadata',
+      'inbox_entries',
+      'inventory_slots',
+      'item_instances',
+      'profiles',
+      'sessions',
+      'ship_unlocks',
+      'wallets',
+    ],
   );
   const applied = await pool.query<{ count: number }>(
     'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',

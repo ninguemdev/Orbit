@@ -56,6 +56,7 @@ export async function startApiServer(policy: IdentityPolicy): Promise<ApiServer>
       },
       {
         identity: new IdentityService({ db, hasher, policy }),
+        db,
         classPreferences: {
           save: (accountId, classId) => updateProfileClass(db, accountId, classId),
         },

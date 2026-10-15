@@ -30,6 +30,8 @@ Persistência não é salvar um JSON enviado pelo navegador. A conta vem da sess
 
 Catálogo de itens, classes, receitas, naves e missões fica versionado no código. Guardar `catalogVersion` na partida e IDs estáveis em SQL. Não reutilizar ID de item para outro significado; itens antigos precisam de migração ou definição compatível.
 
+Implementado na 0.2 (V02.06): `wallets`, `item_instances`, `inventory_slots`, `inbox_entries` e `ship_unlocks`. Slot e caixa de recebimento apontam para o item por chave composta (item, dono, localização), então o banco garante que o item está no stash ou na caixa do próprio dono e em um único lugar. Toda conta nova recebe 200 créditos e a licença da Batedora na transação do cadastro; o stash tem 40 espaços e o excedente vai para a caixa de recebimento. Concessões à mesma conta são serializadas por lock na linha da conta.
+
 `item_instances` representa tanto equipamento único quanto pilhas. Ao dividir uma pilha, criar subinstâncias com origem registrada e soma preservada. Um item em estado reservado deixa de estar disponível no stash, mesmo se a linha física ainda existe na tabela. As constraints e repositórios devem impedir estados incompatíveis.
 
 ## Cadastro e sessão

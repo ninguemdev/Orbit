@@ -24,6 +24,7 @@ const identity = new IdentityService({
 });
 const server = createGameServer(config, {
   identity,
+  db,
   classPreferences: { save: (accountId, classId) => updateProfileClass(db, accountId, classId) },
 });
 server.onShutdown(() => pool.end());

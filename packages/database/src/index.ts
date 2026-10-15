@@ -6,3 +6,4 @@ export * from './identity/accounts';
 export * from './identity/sessions';
 export { createThrowawayDatabase, type ThrowawayDatabase } from './throwaway-database';
 export * from './identity/recovery';
+export * from './inventory/inventory';

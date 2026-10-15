@@ -29,6 +29,20 @@
       "when": 1792089808928,
       "tag": "0003_profile_class",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792090298481,
+      "tag": "0004_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792090299232,
+      "tag": "0005_starter_package_backfill",
+      "breakpoints": true
     }
   ]
 }
