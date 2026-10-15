@@ -169,7 +169,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.04 — Formar party e convidar jogadores
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** server/ui. **Tamanho:** M. **Depende de:** V02.02, V02.03.
 

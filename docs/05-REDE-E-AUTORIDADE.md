@@ -85,6 +85,14 @@ Verificado com Colyseus 0.18 (core 0.18.18, schema 5.0.39, SDK 0.18.5) em testes
 - **Logs:** erros inesperados registram só tipo e código, nunca a mensagem do driver, que traz parâmetros SQL.
 - **Recuperação:** código opcional de 160 bits (32 caracteres Crockford base32), mostrado uma vez; o banco guarda o SHA-256. Gerar outro invalida o anterior. O resgate atualiza a senha, consome o código com UPDATE condicional (dois resgates simultâneos: só um vence) e revoga todas as sessões, na mesma transação. Nick inexistente, código errado e código usado recebem a mesma resposta depois do mesmo trabalho (hash e transação de resgate). O limite é só por endereço: um limite por nick deixaria terceiros bloquearem o dono, e o código de 160 bits não é adivinhável. Gerações simultâneas do código são serializadas por lock na conta.
 
+## Party (0.2)
+
+- **Sala `party` por party:** até 4 membros, privada (não listada), com estado de líder, código de convite e membros. Todo jogador conectado está em exatamente uma party, solo por padrão. Entrar em outra remove o jogador da anterior, no servidor.
+- **Entrada:** só com ticket de uso único (30 s), emitido por `POST /api/party/tickets` para a sessão do cookie. O ticket diz quem é a conta e onde ela pode entrar: party nova, party do código ou party de um convite endereçado a ela. O ticket vai como token da matchmaking (`Authorization`) e é consumido no `onAuth`. Código de convite: 6 caracteres Crockford base32, com tentativas limitadas por endereço.
+- **Líder:** convida por nick de jogador online (online = em alguma party), expulsa (código 4401) e passa a liderança. Quando o líder sai, o membro conectado mais antigo assume. Queda reserva o lugar por 30 s; expulso ou movido não recebe reconexão.
+- **Estado:** em memória do processo de jogo (D26); reiniciar desfaz as parties.
+- **Robustez:** `allowReconnection` rejeita quando o cliente cai antes de concluir a entrada. Sem tratamento, o Colyseus encerrava o processo. As salas tratam a rejeição, e o processo registra rejeições soltas sem cair.
+
 ## Entrada, previsão e reconciliação
 
 Enviar entrada contínua no máximo à frequência do tick, inicialmente 20 mensagens/s por jogador, com sequência monotônica. Cada tick aplica uma entrada de movimento efetiva; receber 100 mensagens não pode produzir 100 passos. Limitar fila e descartar entradas vencidas, duplicadas ou muito à frente.
