@@ -13,13 +13,20 @@
     "@colyseus/core": "0.18.18",
     "@colyseus/schema": "5.0.39",
     "@colyseus/ws-transport": "0.18.4",
+    "@node-rs/argon2": "2.2.2",
     "@orbit/catalog": "workspace:*",
     "@orbit/contracts": "workspace:*",
+    "@orbit/database": "workspace:*",
     "@orbit/simulation": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "express": "5.3.0",
+    "pg": "8.23.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@colyseus/sdk": "0.18.5",
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1",
     "esbuild": "0.28.2",
     "tsx": "4.23.15"
   }

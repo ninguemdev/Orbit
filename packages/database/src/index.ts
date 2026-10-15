@@ -3,3 +3,5 @@ export { createPool, readDatabaseUrl, type PoolOptions } from './pool';
 export { MIGRATIONS_FOLDER, runMigrations } from './migrate';
 export { createDatabase, isUniqueViolation, postgresError, type Database } from './client';
 export * from './identity/accounts';
+export * from './identity/sessions';
+export { createThrowawayDatabase, type ThrowawayDatabase } from './throwaway-database';
