@@ -17,7 +17,7 @@ interface CrewView {
 
 const STAR_TEXTURE = 'stars';
 const STAR_PARALLAX = 0.35;
-const FPS_REFRESH_MS = 250;
+const FPS_WINDOW_MS = 1000;
 
 /**
  * Presents the authorized sector state: starfield, asteroids, the ship with its
@@ -30,7 +30,8 @@ export class SectorScene extends Phaser.Scene {
   #helmConsole!: Phaser.GameObjects.Rectangle;
   #stars!: Phaser.GameObjects.TileSprite;
   #fpsText!: Phaser.GameObjects.Text;
-  #fpsUpdatedAt = 0;
+  #fpsWindowStart = 0;
+  #framesInWindow = 0;
   #controls!: KeyboardControls;
   readonly #crew = new Map<string, CrewView>();
 
@@ -93,9 +94,14 @@ export class SectorScene extends Phaser.Scene {
     }
     const camera = this.cameras.main;
     this.#stars.setTilePosition(camera.scrollX * STAR_PARALLAX, camera.scrollY * STAR_PARALLAX);
-    if (time - this.#fpsUpdatedAt > FPS_REFRESH_MS) {
-      this.#fpsUpdatedAt = time;
-      this.#fpsText.setText(`${Math.round(this.game.loop.actualFps)} FPS`);
+    // Counts frames actually rendered; Phaser's actualFps also counts frames skipped
+    // by the economy-mode limiter.
+    this.#framesInWindow++;
+    const elapsed = time - this.#fpsWindowStart;
+    if (elapsed >= FPS_WINDOW_MS) {
+      this.#fpsText.setText(`${Math.round((this.#framesInWindow * 1000) / elapsed)} FPS`);
+      this.#fpsWindowStart = time;
+      this.#framesInWindow = 0;
     }
   }
 
