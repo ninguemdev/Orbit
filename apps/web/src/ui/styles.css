@@ -149,3 +149,47 @@ button.secondary {
   letter-spacing: 0.05em;
   word-break: break-all;
 }
+
+.party {
+  margin-top: 1.5rem;
+  padding: 0.75rem;
+  border: 1px solid #24314a;
+  border-radius: 6px;
+}
+
+.party h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.party-members,
+.party-invites {
+  padding-left: 1.1rem;
+}
+
+.party-members li,
+.party-invites li {
+  margin-bottom: 0.4rem;
+}
+
+.member-actions,
+.party-invites button {
+  margin-left: 0.5rem;
+}
+
+.member-actions button {
+  margin-right: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.inline-form {
+  display: flex !important;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.inline-form label {
+  flex: 1;
+}

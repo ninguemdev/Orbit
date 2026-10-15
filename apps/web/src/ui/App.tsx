@@ -6,7 +6,9 @@ import { SectorConnection, defaultServerEndpoint } from '../network/sector-conne
 import { AccessScreen } from './AccessScreen';
 import { GameView } from './GameView';
 import { Hud } from './Hud';
+import { PartyPanel } from './PartyPanel';
 import { RecoveryCodePanel } from './RecoveryCodePanel';
+import { useParty } from './use-party';
 
 type Screen =
   | { kind: 'loading'; error?: string }
@@ -28,6 +30,10 @@ function readEconomyPreference(): boolean {
 export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
   const [economy, setEconomy] = useState(readEconomyPreference);
+  const signedIn =
+    screen.kind === 'home' || screen.kind === 'connecting' || screen.kind === 'playing';
+  // The party stays connected while the player is in the development room.
+  const party = useParty(signedIn);
 
   // Only a missing/expired session leads to the access screen; transient failures
   // (network, overload) keep the player where they are and offer a retry.
@@ -181,7 +187,10 @@ export function App() {
           <p data-testid="signed-in-as">
             Conectado como <strong>{me.account.nick}</strong>
           </p>
-          <p>Protótipo 0.2 — sala de desenvolvimento compartilhada.</p>
+          <p>
+            Protótipo 0.2 — forme sua party; a sala de desenvolvimento ainda é compartilhada por
+            todos.
+          </p>
           <label className="inline">
             <input type="checkbox" checked={economy} onChange={toggleEconomy} /> Modo econômico (30
             FPS)
@@ -204,6 +213,7 @@ export function App() {
               {screen.error}
             </p>
           ) : null}
+          <PartyPanel party={party} myAccountId={me.account.id} />
           {screen.kind === 'home' ? (
             <RecoveryCodePanel
               hasCode={me.hasRecoveryCode}
