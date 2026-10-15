@@ -13,7 +13,7 @@ export function configureProcessCors(policy: AccessPolicy): void {
   const { controller } = matchMaker;
   controller.DEFAULT_CORS_HEADERS = {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   } as unknown as typeof controller.DEFAULT_CORS_HEADERS;

@@ -7,6 +7,7 @@ import { AccessScreen } from './AccessScreen';
 import { GameView } from './GameView';
 import { Hud } from './Hud';
 import { InventoryPanel } from './InventoryPanel';
+import { LoadoutPanel } from './LoadoutPanel';
 import { PartyPanel } from './PartyPanel';
 import { RecoveryCodePanel } from './RecoveryCodePanel';
 import { useParty } from './use-party';
@@ -216,6 +217,13 @@ export function App() {
           ) : null}
           <PartyPanel party={party} myAccountId={me.account.id} />
           <InventoryPanel />
+          <LoadoutPanel
+            classId={
+              party.view?.members.find((member) => member.accountId === me.account.id)?.classId ??
+              me.profile.classId ??
+              ''
+            }
+          />
           {screen.kind === 'home' ? (
             <RecoveryCodePanel
               hasCode={me.hasRecoveryCode}

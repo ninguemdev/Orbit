@@ -129,6 +129,8 @@ Rotas JSON no servidor de jogo, com sessão em cookie `orbit_session` (HttpOnly,
 | `PATCH /api/me/profile` | Altera a cor do próprio perfil (opções do catálogo) |
 | `POST /api/me/recovery-code` | Gera um código de recuperação (mostrado uma vez; substitui o anterior) |
 | `GET /api/me/inventory` | Créditos, stash, caixa de recebimento e naves liberadas da própria conta |
+| `GET /api/me/loadout` | Loadout da próxima missão, com o problema de cada item (ex.: classe trocada) |
+| `PUT /api/me/loadout` | Substitui o loadout (`{ picks: [{ slot, instanceId }] }`); o servidor confere dono, espaço e classe |
 | `POST /api/me/stash/move` | Move um item entre espaços do próprio stash (`{ fromSlot, toSlot }`) |
 | `POST /api/recovery` | Define nova senha com `{ nick, code, newPassword }`; o código vale uma vez e encerra as outras sessões |
 

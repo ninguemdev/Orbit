@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { type Browser, type Page, expect } from '@playwright/test';
 
 export const TEST_PASSWORD = 'senha de teste longa';
@@ -25,4 +26,14 @@ export async function signUpInNewContext(
   await form.getByRole('button', { name: 'Criar conta' }).click();
   await expect(page.getByTestId('signed-in-as')).toContainText(nick);
   return { page, nick };
+}
+
+/** Grants dev data (items and the hauler license) through the database script. */
+export function seedDev(nick: string): void {
+  if (!/^[A-Za-z0-9_]+$/.test(nick)) throw new Error(`nick inesperado: ${nick}`);
+  // pnpm is a .cmd on Windows, which needs a shell; the nick was checked above.
+  execFileSync('pnpm', ['db:seed-dev', nick], {
+    stdio: 'pipe',
+    shell: process.platform === 'win32',
+  });
 }

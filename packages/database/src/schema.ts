@@ -217,6 +217,39 @@ export const inboxEntries = pgTable(
   ],
 );
 
+/**
+ * Items picked for the next mission. The item stays in its owner's stash (the
+ * composite key requires it): picking changes nothing in the stash, and the match
+ * reservation arrives in 0.3. An item cannot leave the stash while picked, and
+ * deleting it removes it from the loadout.
+ */
+export const loadoutItems = pgTable(
+  'loadout_items',
+  {
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    /** `primary`, `sidearm`, `tool` or `backpack.<0-7>`. */
+    slot: text('slot').notNull(),
+    itemInstanceId: uuid('item_instance_id').notNull(),
+    location: text('location').notNull().default('stash'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.accountId, table.slot] }),
+    uniqueIndex('loadout_items_item_key').on(table.itemInstanceId),
+    foreignKey({
+      name: 'loadout_items_item_owned_in_stash',
+      columns: [table.itemInstanceId, table.accountId, table.location],
+      foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
+    }).onDelete('cascade'),
+    check(
+      'loadout_items_slot_known',
+      sql`${table.slot} IN ('primary', 'sidearm', 'tool') OR ${table.slot} ~ '^backpack\\.[0-7]$'`,
+    ),
+    check('loadout_items_location_stash', sql`${table.location} = 'stash'`),
+  ],
+);
+
 /** Ship licenses. Not consumed or lost when a ship is destroyed (D04). */
 export const shipUnlocks = pgTable(
   'ship_unlocks',

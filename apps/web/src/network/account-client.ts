@@ -1,6 +1,7 @@
 import {
   type AccountErrorBody,
   type InventoryResponse,
+  type LoadoutResponse,
   AccountErrorCode,
   AccountRoute,
   type MeResponse,
@@ -10,7 +11,9 @@ import {
 /** `network`: no answer; `unexpected`: an answer outside the API contract (e.g. 500). */
 export type ClientErrorCode = AccountErrorCode | 'network' | 'unexpected';
 
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; code: ClientErrorCode };
+/** A failure keeps the error body, for answers that explain more than the code. */
+export type ApiResult<T> =
+  { ok: true; data: T } | { ok: false; code: ClientErrorCode; body?: unknown };
 
 const KNOWN_CODES = new Set<string>(Object.values(AccountErrorCode));
 
@@ -35,7 +38,8 @@ export async function requestJson<T>(
   const payload = (await response.json().catch(() => null)) as T | AccountErrorBody | null;
   if (response.ok && payload !== null) return { ok: true, data: payload as T };
   const code = (payload as AccountErrorBody | null)?.error;
-  return { ok: false, code: code && KNOWN_CODES.has(code) ? code : 'unexpected' };
+  if (!code || !KNOWN_CODES.has(code)) return { ok: false, code: 'unexpected' };
+  return { ok: false, code, body: payload };
 }
 
 /**
@@ -54,6 +58,9 @@ async function withRetry<T>(read: () => Promise<ApiResult<T>>, retries = 2): Pro
 export const accountClient = {
   me: () => withRetry(() => requestJson<MeResponse>(AccountRoute.Me, 'GET')),
   inventory: () => withRetry(() => requestJson<InventoryResponse>(AccountRoute.MyInventory, 'GET')),
+  loadout: () => withRetry(() => requestJson<LoadoutResponse>(AccountRoute.MyLoadout, 'GET')),
+  saveLoadout: (picks: readonly { slot: string; instanceId: string }[]) =>
+    requestJson<LoadoutResponse>(AccountRoute.MyLoadout, 'PUT', { picks }),
   signUp: (nick: string, password: string) =>
     requestJson<MeResponse>(AccountRoute.Accounts, 'POST', { nick, password }),
   login: (nick: string, password: string) =>
@@ -99,6 +106,8 @@ export function describeAccountError(code: ClientErrorCode): string {
       return 'Esse espaço do stash está vazio.';
     case 'invalid_slot':
       return 'Espaço do stash inválido.';
+    case 'invalid_loadout':
+      return 'O loadout tem itens que não podem ir nesses espaços.';
     case 'removed_from_party':
       return 'O líder removeu você desta party. Para voltar, peça um novo convite.';
   }

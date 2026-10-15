@@ -7,6 +7,9 @@ import {
   type RecoveryCodeResponse,
   SESSION_COOKIE,
   type InventoryResponse,
+  type LoadoutRefusalBody,
+  type LoadoutResponse,
+  setLoadoutSchema,
   moveStashSchema,
   updateProfileSchema,
 } from '@orbit/contracts';
@@ -14,6 +17,8 @@ import {
   type ActiveSession,
   type Database,
   getInventory,
+  getLoadout,
+  setLoadout,
   getShipLicenses,
   moveStashItem,
   postgresError,
@@ -54,6 +59,7 @@ const STATUS: Record<string, number> = {
   [AccountErrorCode.PartyFull]: 409,
   [AccountErrorCode.EmptySlot]: 409,
   [AccountErrorCode.InvalidSlot]: 400,
+  [AccountErrorCode.InvalidLoadout]: 422,
   [AccountErrorCode.UnsupportedMediaType]: 415,
   [AccountErrorCode.RateLimited]: 429,
   [AccountErrorCode.Overloaded]: 503,
@@ -211,6 +217,43 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
         if (moved === 'empty_slot') return fail(response, AccountErrorCode.EmptySlot);
         if (moved === 'invalid_slot') return fail(response, AccountErrorCode.InvalidSlot);
         response.status(204).end();
+      }),
+    );
+    const sendLoadout = async (response: Response, accountId: string) => {
+      const loadout = await getLoadout(db, accountId);
+      const body: LoadoutResponse = {
+        classId: loadout.classId,
+        entries: loadout.entries.map(({ slot, instanceId, itemId, quantity, issue }) => ({
+          slot,
+          instanceId,
+          itemId,
+          quantity,
+          issue,
+        })),
+      };
+      response.json(body);
+    };
+    router.get(
+      AccountRoute.MyLoadout,
+      withSession(async (_request, response, session) => sendLoadout(response, session.accountId)),
+    );
+    router.put(
+      AccountRoute.MyLoadout,
+      withSession(async (request, response, session) => {
+        // The body names items and slots only; ownership is checked against the session.
+        const parsed = setLoadoutSchema.safeParse(request.body);
+        if (!parsed.success) return fail(response, AccountErrorCode.InvalidInput);
+        const result = await setLoadout(db, session.accountId, parsed.data.picks);
+        if (!result.ok) {
+          if (result.issues === null) return fail(response, AccountErrorCode.Unauthenticated);
+          const body: LoadoutRefusalBody = {
+            error: AccountErrorCode.InvalidLoadout,
+            issues: result.issues,
+          };
+          response.status(422).json(body);
+          return;
+        }
+        await sendLoadout(response, session.accountId);
       }),
     );
   }
