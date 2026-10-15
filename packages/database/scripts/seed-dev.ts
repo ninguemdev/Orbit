@@ -2,10 +2,10 @@
  * Development data: grants a fixed set of items to one account so preparation
  * screens can be exercised. Refused in production. Usage: pnpm db:seed-dev <nick>
  */
-import { ItemId } from '@orbit/catalog';
+import { ItemId, ShipHullId } from '@orbit/catalog';
 import { createDatabase } from '../src/client';
 import { findAccountByNick } from '../src/identity/accounts';
-import { grantItem } from '../src/inventory/inventory';
+import { grantItem, grantShipLicense } from '../src/inventory/inventory';
 import { createPool, readDatabaseUrl } from '../src/pool';
 
 const DEV_ITEMS: readonly [string, number][] = [
@@ -44,7 +44,8 @@ try {
         reason: 'dados de desenvolvimento',
       });
     }
-    console.info(`[seed-dev] itens de teste concedidos a ${account.nick}`);
+    await grantShipLicense(db, account.id, ShipHullId.Hauler, 'grant:dev');
+    console.info(`[seed-dev] itens de teste e licença da Cargueira concedidos a ${account.nick}`);
   }
 } finally {
   await pool.end();

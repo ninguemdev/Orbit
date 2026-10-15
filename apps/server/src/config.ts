@@ -15,6 +15,8 @@ export interface ServerEnvironment extends ServerConfig {
   /** Per-address limits for sign-up and login (per 15 minutes); undefined = defaults. */
   readonly signUpsPerAddress: number | undefined;
   readonly loginAttemptsPerAddress: number | undefined;
+  /** Party invite code attempts per address (per 15 minutes); undefined = default. */
+  readonly partyCodeGuessesPerAddress: number | undefined;
 }
 
 const DEFAULT_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173';
@@ -47,6 +49,7 @@ export function readServerConfig(env: NodeJS.ProcessEnv = process.env): ServerEn
     databaseUrl,
     signUpsPerAddress: readPositiveInteger(env, 'SIGNUPS_PER_ADDRESS'),
     loginAttemptsPerAddress: readPositiveInteger(env, 'LOGIN_ATTEMPTS_PER_ADDRESS'),
+    partyCodeGuessesPerAddress: readPositiveInteger(env, 'PARTY_CODE_GUESSES_PER_ADDRESS'),
   };
 }
 

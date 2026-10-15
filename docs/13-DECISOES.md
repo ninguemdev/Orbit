@@ -31,6 +31,7 @@
 | D25 | Servidor de jogo exige `DATABASE_URL` desde a 0.2 | Adotada na 0.2 | — |
 | D26 | Parties em salas Colyseus em memória (sem tabela), entrada por ticket de uso único emitido pela API de conta | Adotada na 0.2 | Quando houver vários processos de jogo |
 | D27 | Pacote inicial de 200 créditos e licença da Batedora; stash de 40 espaços; catálogo inicial de 6 itens | Proposta (0.2) | Balanceamento da economia e loja (0.8) |
+| D28 | A party usa a união das licenças de nave dos membros atuais; só o líder escolhe; segunda nave do catálogo (Cargueira) para validar a união | Proposta (0.2) | Licenças compradas na loja (0.8) |
 
 Quando modificar uma decisão, registrar motivação, nova regra e documentos/tarefas afetados. Não alterar silenciosamente números centrais como velocidade de boost ou elegibilidade de extração.
 

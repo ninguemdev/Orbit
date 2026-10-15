@@ -14,6 +14,7 @@ import {
   type ActiveSession,
   type Database,
   getInventory,
+  getShipLicenses,
   moveStashItem,
   postgresError,
 } from '@orbit/database';
@@ -219,11 +220,19 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
     router.post(
       PartyRoute.Tickets,
       withSession(async (request, response, session) => {
-        const me = await identity.me(session.accountId);
+        const [me, ships] = await Promise.all([
+          identity.me(session.accountId),
+          db ? getShipLicenses(db, session.accountId) : Promise.resolve([]),
+        ]);
         if (!me) return fail(response, AccountErrorCode.Unauthenticated);
         const result = party.issue(
           request.body,
-          { accountId: session.accountId, nick: session.nick, classId: me.profile.classId ?? '' },
+          {
+            accountId: session.accountId,
+            nick: session.nick,
+            classId: me.profile.classId ?? '',
+            ships,
+          },
           address(request),
         );
         if (!result.ok) return fail(response, result.code);

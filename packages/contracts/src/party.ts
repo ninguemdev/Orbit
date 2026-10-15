@@ -33,6 +33,7 @@ export const PartyClientMessage = {
   Kick: 'party.kick',
   Promote: 'party.promote',
   SelectClass: 'party.class.select',
+  SelectShip: 'party.ship.select',
 } as const;
 
 export const PartyServerMessage = {
@@ -44,6 +45,8 @@ export const partyInviteSchema = z.strictObject({ nick: nickSchema });
 export const partyMemberTargetSchema = z.strictObject({ accountId: z.uuid() });
 /** Class IDs are checked against the versioned catalog by the server. */
 export const partySelectClassSchema = z.strictObject({ classId: z.string().min(1).max(64) });
+/** Leader only; the ship must be licensed by some current member. */
+export const partySelectShipSchema = z.strictObject({ shipId: z.string().min(1).max(64) });
 
 export const PartyErrorCode = {
   InvalidInviteCode: 'invalid_invite_code',
@@ -55,6 +58,7 @@ export const PartyErrorCode = {
   NotMember: 'not_member',
   InvalidPayload: 'invalid_payload',
   UnknownClass: 'unknown_class',
+  ShipUnavailable: 'ship_unavailable',
 } as const;
 export type PartyErrorCode = (typeof PartyErrorCode)[keyof typeof PartyErrorCode];
 
@@ -82,11 +86,15 @@ export interface PartyMemberView {
   readonly joinedAt: number;
   /** Catalog class ID chosen for the next mission; empty until chosen. */
   readonly classId: string;
+  /** Ship licenses this member brings; the party may use the union of all members'. */
+  readonly ships: { forEach(cb: (shipId: string) => void): void; readonly length: number };
 }
 
 export interface PartyStateView {
   readonly leaderId: string;
   readonly inviteCode: string;
+  /** Ship chosen by the leader; empty when none or when its last owner left. */
+  readonly selectedShipId: string;
   readonly members: {
     forEach(cb: (member: PartyMemberView, accountId: string) => void): void;
     readonly size: number;

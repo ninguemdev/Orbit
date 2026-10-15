@@ -26,6 +26,8 @@ export interface PartyControls {
   kick(accountId: string): void;
   promote(accountId: string): void;
   selectClass(classId: string): void;
+  /** Leader only; the server checks that a member holds the license. */
+  selectShip(shipId: string): void;
   leaveParty(): Promise<void>;
   reclaim(): Promise<void>;
 }
@@ -38,6 +40,7 @@ const REFUSAL_TEXT: Record<string, string> = {
   not_member: 'Esse jogador não está mais na party.',
   invalid_payload: 'Pedido inválido.',
   unknown_class: 'Classe desconhecida.',
+  ship_unavailable: 'Nenhum membro da party tem licença dessa nave.',
 };
 
 type OpenOutcome = { ok: true } | { ok: false; code: ClientErrorCode | 'join_failed' | 'stale' };
@@ -208,6 +211,7 @@ export function useParty(signedIn: boolean): PartyControls {
     kick: (accountId) => current.current?.kick(accountId),
     promote: (accountId) => current.current?.promote(accountId),
     selectClass: (classId) => current.current?.selectClass(classId),
+    selectShip: (shipId) => current.current?.selectShip(shipId),
     leaveParty: async () => {
       await run({ intent: 'create' });
     },

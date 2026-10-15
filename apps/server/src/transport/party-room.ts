@@ -13,8 +13,9 @@ import {
   partyInviteSchema,
   partyMemberTargetSchema,
   partySelectClassSchema,
+  partySelectShipSchema,
 } from '@orbit/contracts';
-import { isClassId } from '@orbit/catalog';
+import { SHIP_ORDER, isClassId } from '@orbit/catalog';
 import type { PartyDirectory, PartyRoomHandle } from '../modules/party/party-directory';
 import type { RoomTicket, RoomTicketStore } from '../modules/party/room-tickets';
 import { PartyMemberState, PartyState } from './party-schema';
@@ -110,6 +111,17 @@ export class PartyRoom
         console.error(`[party] não foi possível salvar a classe: ${name}`);
       });
     });
+    this.onMessage(PartyClientMessage.SelectShip, (client: PartyClient, raw: unknown) => {
+      const action = PartyClientMessage.SelectShip;
+      const parsed = partySelectShipSchema.safeParse(raw);
+      if (!parsed.success) return this.#refuse(client, action, PartyErrorCode.InvalidPayload);
+      if (!this.#isLeader(client)) return this.#refuse(client, action, PartyErrorCode.NotLeader);
+      // Any current member's license makes the ship available to the whole party.
+      if (!this.#availableShips().has(parsed.data.shipId)) {
+        return this.#refuse(client, action, PartyErrorCode.ShipUnavailable);
+      }
+      this.state.selectedShipId = parsed.data.shipId;
+    });
     this.onMessage('*', (client: PartyClient, type) => {
       this.#refuse(client, String(type), PartyErrorCode.InvalidPayload);
     });
@@ -137,8 +149,14 @@ export class PartyRoom
     member.connected = true;
     member.joinedAt = this.#now();
     member.classId = isClassId(ticket.classId) ? ticket.classId : '';
+    // Licenses as read when the ticket was issued, in catalog order.
+    for (const shipId of SHIP_ORDER) if (ticket.ships.includes(shipId)) member.ships.push(shipId);
+    const creator = this.state.members.size === 0;
     this.state.members.set(accountId, member);
     if (!this.state.leaderId) this.state.leaderId = accountId;
+    // A new party starts with its creator's first ship in catalog order. Later
+    // arrivals never choose: an empty choice waits for the leader.
+    if (creator) this.state.selectedShipId = member.ships.at(0) ?? '';
     this.#clients.set(accountId, client);
     this.#removed.delete(accountId);
     this.#deps.directory.joined(accountId, nick, this.roomId);
@@ -277,6 +295,17 @@ export class PartyRoom
     if (!this.state.members.delete(accountId)) return;
     this.#deps.directory.left(accountId, this.roomId);
     if (this.state.leaderId === accountId) this.state.leaderId = this.#nextLeader();
+    // The last owner of the selected ship left: the choice is no longer valid.
+    if (this.state.selectedShipId && !this.#availableShips().has(this.state.selectedShipId)) {
+      this.state.selectedShipId = '';
+    }
+  }
+
+  /** Union of the members' ship licenses, without duplicates. */
+  #availableShips(): Set<string> {
+    const ships = new Set<string>();
+    this.state.members.forEach((member) => member.ships.forEach((shipId) => ships.add(shipId)));
+    return ships;
   }
 
   /** The longest-standing member leads; connected members are preferred. */

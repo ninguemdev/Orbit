@@ -205,7 +205,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.07 — Disponibilizar união das naves da party
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** server/ui. **Tamanho:** M. **Depende de:** V02.04, V02.06.
 

@@ -43,6 +43,7 @@ export default defineConfig({
         // Every test signs up fresh accounts from the same address.
         SIGNUPS_PER_ADDRESS: '1000',
         LOGIN_ATTEMPTS_PER_ADDRESS: '1000',
+        PARTY_CODE_GUESSES_PER_ADDRESS: '1000',
       },
     },
     {

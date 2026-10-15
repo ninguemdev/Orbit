@@ -3,6 +3,7 @@ import {
   PARTY_ROOM_NAME,
   PartyClientMessage,
   type PartyInviteNotice,
+  type PartyMemberView,
   type PartyRefusal,
   PartyRoute,
   PartyServerMessage,
@@ -18,11 +19,15 @@ export interface PartyMember {
   readonly nick: string;
   readonly connected: boolean;
   readonly classId: string;
+  /** Ship licenses this member brings to the party. */
+  readonly ships: readonly string[];
 }
 
 export interface PartyView {
   readonly leaderId: string;
   readonly inviteCode: string;
+  /** Ship chosen by the leader; empty when none is valid. */
+  readonly selectedShipId: string;
   /** Ordered by arrival. */
   readonly members: readonly PartyMember[];
 }
@@ -103,11 +108,21 @@ export class PartyConnection {
     this.#room.send(PartyClientMessage.SelectClass, { classId });
   }
 
+  selectShip(shipId: string): void {
+    this.#room.send(PartyClientMessage.SelectShip, { shipId });
+  }
+
   /** Leaves on purpose; listeners are not told about this close. */
   async leave(): Promise<void> {
     this.#closedByUs = true;
     await this.#room.leave(true).catch(() => undefined);
   }
+}
+
+function shipsOf(list: PartyMemberView['ships'] | undefined): string[] {
+  const ships: string[] = [];
+  list?.forEach((shipId) => ships.push(shipId));
+  return ships;
 }
 
 function toView(state: PartyStateView): PartyView {
@@ -119,6 +134,7 @@ function toView(state: PartyStateView): PartyView {
         nick: member.nick,
         connected: member.connected,
         classId: member.classId,
+        ships: shipsOf(member.ships),
       },
       joinedAt: member.joinedAt,
     });
@@ -127,6 +143,7 @@ function toView(state: PartyStateView): PartyView {
   return {
     leaderId: state.leaderId ?? '',
     inviteCode: state.inviteCode ?? '',
+    selectedShipId: state.selectedShipId ?? '',
     members: members.map((entry) => entry.member),
   };
 }

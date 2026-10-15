@@ -57,6 +57,8 @@ export async function startApiServer(policy: IdentityPolicy): Promise<ApiServer>
       {
         identity: new IdentityService({ db, hasher, policy }),
         db,
+        // Every test shares 127.0.0.1; the limit itself is covered by a unit test.
+        codeGuessesPerAddress: 1000,
         classPreferences: {
           save: (accountId, classId) => updateProfileClass(db, accountId, classId),
         },

@@ -26,6 +26,9 @@ const server = createGameServer(config, {
   identity,
   db,
   classPreferences: { save: (accountId, classId) => updateProfileClass(db, accountId, classId) },
+  ...(config.partyCodeGuessesPerAddress !== undefined
+    ? { codeGuessesPerAddress: config.partyCodeGuessesPerAddress }
+    : {}),
 });
 server.onShutdown(() => pool.end());
 

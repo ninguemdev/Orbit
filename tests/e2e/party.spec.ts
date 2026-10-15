@@ -1,5 +1,16 @@
+import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
 import { signUpInNewContext } from './support/accounts';
+
+/** Grants dev data (items and the hauler license) through the database script. */
+function seedDev(nick: string): void {
+  if (!/^[A-Za-z0-9_]+$/.test(nick)) throw new Error(`nick inesperado: ${nick}`);
+  // pnpm is a .cmd on Windows, which needs a shell; the nick was checked above.
+  execFileSync('pnpm', ['db:seed-dev', nick], {
+    stdio: 'pipe',
+    shell: process.platform === 'win32',
+  });
+}
 
 test('forms a party by code and by invite, and hands over leadership', async ({ browser }) => {
   const alfa = await signUpInNewContext(browser, 'Lider');
@@ -23,6 +34,8 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
   });
 
   await test.step('a friend joins with the code', async () => {
+    // Bravo receives the hauler license (dev data) before entering Alfa's party.
+    seedDev(bravo.nick);
     const code = (await alfa.page.getByTestId('party-code').textContent()) ?? '';
     await bravo.page.getByLabel('Entrar em outra party (código)').fill(code.toLowerCase());
     await bravo.page.getByRole('button', { name: 'Entrar', exact: true }).click();
@@ -31,6 +44,19 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
       await expect(members(page)).toContainText(bravo.nick);
     }
     await expect(bravo.page.getByRole('heading', { name: /Sua party \(2\/4\)/ })).toBeVisible();
+  });
+
+  await test.step('the party may use any member ship, chosen by the leader', async () => {
+    for (const page of [alfa.page, bravo.page]) {
+      const ships = page.getByTestId('party-ships');
+      await expect(ships).toContainText(`BatedoraLiberada por: ${alfa.nick}, ${bravo.nick}`);
+      await expect(ships).toContainText(`CargueiraLiberada por: ${bravo.nick}`);
+    }
+    await expect(bravo.page.getByRole('radio', { name: /Cargueira/ })).toBeDisabled();
+    // The radio follows the server state, so the click is confirmed by the update.
+    await alfa.page.getByRole('radio', { name: /Cargueira/ }).click();
+    await expect(alfa.page.getByRole('radio', { name: /Cargueira/ })).toBeChecked();
+    await expect(bravo.page.getByRole('radio', { name: /Cargueira/ })).toBeChecked();
   });
 
   await test.step('only the leader sees invite and member controls', async () => {
