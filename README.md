@@ -84,7 +84,7 @@ Executados e verificados no Windows 11 com Node 24.18.0 e pnpm 12.9.1, e no CI (
 | Comando | Efeito |
 | --- | --- |
 | `pnpm install --frozen-lockfile` | Instala exatamente as versões do lockfile |
-| `pnpm dev` | Servidor de jogo em `ws://127.0.0.1:2567` e cliente em `http://127.0.0.1:5173` |
+| `pnpm dev` | Servidor de jogo e API de conta em `http://127.0.0.1:2567` (WebSocket na mesma porta) e cliente em `http://127.0.0.1:5173`; exige o banco migrado |
 | `pnpm lint` / `pnpm format:check` | ESLint e Prettier |
 | `pnpm typecheck` | TypeScript estrito em todos os pacotes |
 | `pnpm test` | Testes unitários e de integração com servidor e clientes SDK reais |
@@ -96,24 +96,38 @@ Executados e verificados no Windows 11 com Node 24.18.0 e pnpm 12.9.1, e no CI (
 | `pnpm test:db` | Testes de integração SQL (constraints, concorrência, rollback) em bancos descartáveis; exige `pnpm db:up` |
 | `pnpm build && pnpm e2e` | Teste multiplayer com dois navegadores sobre o build de produção |
 
-Copie `.env.example` para `.env` antes de usar os comandos de banco. O `pnpm e2e` usa as portas 2567 a 2569 e 4173 (servidor, um proxy TCP que simula quedas de rede e o cliente); encerre o `pnpm dev` antes. Na primeira vez, instale o navegador com `pnpm exec playwright install chromium`.
+Copie `.env.example` para `.env` antes de tudo: o servidor exige `DATABASE_URL` desde a 0.2. Antes do `pnpm dev`, rode `pnpm db:up` e `pnpm db:migrate`. O `pnpm e2e` usa as portas 2567 a 2569 e 4173 (servidor, um proxy TCP que simula quedas de rede e o cliente); encerre o `pnpm dev` antes. Na primeira vez, instale o navegador com `pnpm exec playwright install chromium`.
 
 ### Abrir duas sessões no protótipo
 
-1. Rode `pnpm install --frozen-lockfile` e depois `pnpm dev`.
+1. Rode `pnpm install --frozen-lockfile`, copie `.env.example` para `.env`, rode `pnpm db:up`, `pnpm db:migrate` e depois `pnpm dev`.
 2. Abra `http://127.0.0.1:5173` em duas janelas separadas (por exemplo, uma janela normal e outra anônima, ou dois navegadores).
 3. Em cada janela, informe um nome (opcional) e clique em **Entrar na sala**. As duas entram na mesma sala e aparecem na lista do painel.
 4. **WASD** ou setas movem o tripulante dentro da nave. Para pilotar, passe pela porta da ponte até o círculo amarelo do console e pressione **E**. No comando, **W/S** aceleram/freiam e **A/D** giram. **E** ou **Esc** liberam o comando.
 5. A outra janela vê a mesma nave se mover. Se ela tentar assumir o comando ocupado, o painel informa o motivo.
 
-### Limitações da 0.1
+### API de conta
+
+Rotas JSON no servidor de jogo, com sessão em cookie `orbit_session` (HttpOnly, SameSite=Strict, 7 dias; `Secure` em produção):
+
+| Rota | Uso |
+| --- | --- |
+| `POST /api/accounts` | Cadastro com `{ nick, password }` (nick de 3 a 20 caracteres `[A-Za-z0-9_]`, senha de 12 a 128) |
+| `POST /api/sessions` | Login; erro igual para nick inexistente e senha errada |
+| `DELETE /api/sessions/current` | Logout, revogando a sessão no servidor |
+| `GET /api/me` | Conta e perfil da sessão |
+| `PATCH /api/me/profile` | Altera a cor do próprio perfil (opções do catálogo) |
+
+Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGINS`. Login e cadastro têm limite por endereço e por nick.
+
+### Limitações atuais
 
 - Sala de desenvolvimento anônima: não há conta nem sessão. Origem e versão de protocolo são validadas; sem cabeçalho Origin, a conexão só é aceita fora de produção.
 - Até 4 tripulantes por sala; uma quinta pessoa cria outra sala.
 - Sem previsão local: o próprio personagem aparece com cerca de 100 ms mais a latência. Os outros jogadores e a nave são interpolados; previsão e reconciliação do jogador local ficam para depois de estabilizar o fluxo.
 - Uma queda reserva o assento por 60 s. O tripulante aparece como "reconectando", e fechar a aba deixa o personagem na sala até esse prazo. A detecção depende do heartbeat do servidor e pode levar alguns segundos.
 - Um único setor fixo, um casco de nave e colisão por círculos contra asteroides. Não há dano, boost, consoles extras, EVA nem combate.
-- O banco já tem as tabelas de identidade (`accounts`, `sessions`, `account_recovery`, `profiles`), mas cadastro e login ainda não existem; o servidor de jogo não usa o PostgreSQL.
+- Cadastro, login, logout e perfil existem como API HTTP (`/api/accounts`, `/api/sessions`, `/api/me`), ainda sem tela no cliente (V02.03); a sala de desenvolvimento continua anônima.
 - Sem deploy, HTTPS nem proxy. Use apenas em ambiente de desenvolvimento.
 
 Para contribuir, veja [CONTRIBUTING.md](CONTRIBUTING.md). Alterações de escopo precisam aparecer no roadmap e na matriz de requisitos.

@@ -1,5 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// The game server needs DATABASE_URL (accounts); CI sets it, locally it comes from .env.
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // Already in the environment.
+}
+
 /** The client connects to this port; a drop proxy forwards it to the game server. */
 const PUBLIC_SERVER_PORT = 2567;
 const SERVER_PORT = 2568;
@@ -32,6 +39,7 @@ export default defineConfig({
         HOST: '127.0.0.1',
         PORT: String(SERVER_PORT),
         ALLOWED_ORIGINS: `http://127.0.0.1:${WEB_PORT}`,
+        DATABASE_URL: process.env['DATABASE_URL'] ?? '',
       },
     },
     {

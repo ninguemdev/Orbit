@@ -71,6 +71,22 @@ jobs:
     name: Multiplayer com dois navegadores
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: orbit
+          POSTGRES_PASSWORD: orbit_ci_password
+          POSTGRES_DB: orbit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U orbit -d orbit"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://orbit:orbit_ci_password@127.0.0.1:5432/orbit
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -80,6 +96,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm db:migrate
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e
       - if: failure()

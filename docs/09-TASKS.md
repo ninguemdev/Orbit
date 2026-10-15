@@ -1,6 +1,6 @@
 # Backlog de desenvolvimento
 
-As tarefas V01.01 a V01.09 tiveram o aceite verificado (issues #1 a #9 e PR #10 do GitHub); as demais estão **pendentes**. IDs são estáveis e são usados nos títulos das issues. Cada task tem entrega, dependências e aceite.
+As tarefas marcadas como concluídas tiveram o aceite verificado e foram integradas por PR no GitHub; as demais estão **pendentes**. IDs são estáveis e são usados nos títulos das issues. Cada task tem entrega, dependências e aceite.
 
 P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PRs menores antes de começar. Tamanhos são relativos, sem promessa de horas ou datas. Os gates finais de cada versão são obrigatórios. Não declarar a release pronta só porque o código compila.
 
@@ -133,7 +133,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.01 — Migrar identidade e sessão
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** data. **Tamanho:** M. **Depende de:** V01.08.
 
@@ -145,7 +145,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.02 — Implementar cadastro, login e autorização
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** server/security. **Tamanho:** M. **Depende de:** V02.01, V01.09.
 
