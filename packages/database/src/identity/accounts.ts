@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { type AppearanceColorId, isAppearanceColorId } from '@orbit/catalog';
 import { normalizeNick } from '@orbit/contracts';
 import { type Database, isUniqueViolation } from '../client';
 import { accounts, profiles } from '../schema';
@@ -7,7 +8,7 @@ export interface NewAccount {
   readonly nick: string;
   /** Argon2id hash produced by the identity service; never the password itself. */
   readonly passwordHash: string;
-  readonly colorId: string;
+  readonly colorId: AppearanceColorId;
 }
 
 export type CreateAccountResult =
@@ -19,6 +20,10 @@ export type CreateAccountResult =
  * case from an existing one is refused by the unique index, also under concurrency.
  */
 export async function createAccount(db: Database, input: NewAccount): Promise<CreateAccountResult> {
+  // The database only checks the ID format; the catalog is the source of valid options.
+  if (!isAppearanceColorId(input.colorId)) {
+    throw new RangeError(`Cor fora do catálogo: ${String(input.colorId)}`);
+  }
   try {
     return await db.transaction(async (tx) => {
       const [account] = await tx

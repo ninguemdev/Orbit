@@ -1,3 +1,5 @@
+import { APPEARANCE_COLORS } from '@orbit/catalog';
+
 /** Flat colors for the geometric art. Crew colors are paired with name labels so color is never the only cue. */
 export const PALETTE = {
   space: 0x05070d,
@@ -15,8 +17,8 @@ export const PALETTE = {
   self: 0xffffff,
 } as const;
 
-export const CREW_COLORS = [0x4fc3f7, 0xffb74d, 0x81c784, 0xf06292] as const;
+const CREW_COLORS: readonly number[] = Object.values(APPEARANCE_COLORS).map((color) => color.hex);
 
 export function crewColor(index: number): number {
-  return CREW_COLORS[index % CREW_COLORS.length] ?? CREW_COLORS[0];
+  return CREW_COLORS[index % CREW_COLORS.length] ?? PALETTE.self;
 }

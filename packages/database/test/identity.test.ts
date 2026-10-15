@@ -1,8 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DEFAULT_APPEARANCE_COLOR } from '@orbit/catalog';
+import { eq } from 'drizzle-orm';
+import { AppearanceColorId, DEFAULT_APPEARANCE_COLOR } from '@orbit/catalog';
 import { postgresError } from '../src/client';
 import { createAccount, findAccountByNick } from '../src/identity/accounts';
+import { accounts } from '../src/schema';
 import { FAKE_ARGON2ID_HASH, type TestDatabase, createTestDatabase } from './test-database';
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -62,14 +64,33 @@ describe('identity schema', () => {
   });
 
   it('rolls back the account when the profile cannot be created', async () => {
+    // Force the profile insert (second statement of the transaction) to fail.
+    await t.pool.query(
+      `ALTER TABLE profiles ADD CONSTRAINT test_reject_pink CHECK (color_id <> '${AppearanceColorId.Pink}')`,
+    );
+    try {
+      await expect(
+        createAccount(t.db, {
+          nick: 'Sem_Perfil',
+          passwordHash: FAKE_ARGON2ID_HASH,
+          colorId: AppearanceColorId.Pink,
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await t.pool.query('ALTER TABLE profiles DROP CONSTRAINT test_reject_pink');
+    }
+    expect(await findAccountByNick(t.db, 'Sem_Perfil')).toBeNull();
+  });
+
+  it('refuses appearance options outside the catalog before touching the database', async () => {
     await expect(
       createAccount(t.db, {
-        nick: 'Sem_Perfil',
+        nick: 'Cor_Errada',
         passwordHash: FAKE_ARGON2ID_HASH,
-        colorId: 'roxo',
+        colorId: 'appearance.color.purple' as AppearanceColorId,
       }),
-    ).rejects.toThrow();
-    expect(await findAccountByNick(t.db, 'Sem_Perfil')).toBeNull();
+    ).rejects.toThrow(RangeError);
+    expect(await findAccountByNick(t.db, 'Cor_Errada')).toBeNull();
   });
 
   it('refuses raw passwords, invalid nicks and inconsistent normalization', async () => {
@@ -130,13 +151,49 @@ describe('identity schema', () => {
   });
 
   it('removes sessions, recovery codes and profile with the account', async () => {
-    const found = await findAccountByNick(t.db, 'Sessao_A');
-    await t.pool.query('DELETE FROM accounts WHERE id = $1', [found?.id]);
-    const left = await t.pool.query(
-      `SELECT (SELECT count(*)::int FROM sessions WHERE account_id = $1) AS sessions,
-              (SELECT count(*)::int FROM profiles WHERE account_id = $1) AS profiles`,
-      [found?.id],
+    const account = await newAccount('Apagavel');
+    if (!account.ok) throw new Error('conta não criada');
+    const id = account.accountId;
+    await t.pool.query(
+      "INSERT INTO sessions (account_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')",
+      [id, sha256('sessao-apagavel')],
     );
-    expect(left.rows).toEqual([{ sessions: 0, profiles: 0 }]);
+    await t.pool.query('INSERT INTO account_recovery (account_id, code_hash) VALUES ($1, $2)', [
+      id,
+      sha256('codigo-apagavel'),
+    ]);
+    const count = async () =>
+      (
+        await t.pool.query(
+          `SELECT (SELECT count(*)::int FROM sessions WHERE account_id = $1) AS sessions,
+                  (SELECT count(*)::int FROM account_recovery WHERE account_id = $1) AS recovery,
+                  (SELECT count(*)::int FROM profiles WHERE account_id = $1) AS profiles`,
+          [id],
+        )
+      ).rows;
+    expect(await count()).toEqual([{ sessions: 1, recovery: 1, profiles: 1 }]);
+    await t.pool.query('DELETE FROM accounts WHERE id = $1', [id]);
+    expect(await count()).toEqual([{ sessions: 0, recovery: 0, profiles: 0 }]);
+  });
+
+  it('refreshes updated_at when an account changes through Drizzle', async () => {
+    const account = await newAccount('Atualiza');
+    if (!account.ok) throw new Error('conta não criada');
+    const before = await t.pool.query<{ updated_at: Date }>(
+      'SELECT updated_at FROM accounts WHERE id = $1',
+      [account.accountId],
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await t.db
+      .update(accounts)
+      .set({ status: 'disabled' })
+      .where(eq(accounts.id, account.accountId));
+    const after = await t.pool.query<{ updated_at: Date }>(
+      'SELECT updated_at FROM accounts WHERE id = $1',
+      [account.accountId],
+    );
+    expect(after.rows[0]?.updated_at.getTime()).toBeGreaterThan(
+      before.rows[0]?.updated_at.getTime() ?? Infinity,
+    );
   });
 });

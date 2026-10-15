@@ -12,6 +12,12 @@ export const appMetadata = pgTable('app_metadata', {
 });
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
+/** Refreshed by Drizzle on every update issued through the repositories. */
+const updatedAt = () =>
+  timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date());
 
 /**
  * Player accounts. The nick is shown as typed and compared case-insensitively
@@ -26,7 +32,7 @@ export const accounts = pgTable(
     passwordHash: text('password_hash').notNull(),
     status: text('status').notNull().default('active'),
     createdAt: createdAt(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: updatedAt(),
   },
   (table) => [
     uniqueIndex('accounts_nick_normalized_key').on(table.nickNormalized),
@@ -96,7 +102,7 @@ export const profiles = pgTable(
       .references(() => accounts.id, { onDelete: 'cascade' }),
     colorId: text('color_id').notNull(),
     createdAt: createdAt(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: updatedAt(),
   },
   (table) => [
     check('profiles_color_id_format', sql`${table.colorId} ~ '^appearance\\.color\\.[a-z]+$'`),
