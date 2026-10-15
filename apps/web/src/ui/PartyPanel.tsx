@@ -15,9 +15,11 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
   const { view } = party;
   const isLeader = view?.leaderId === myAccountId;
   const me = view?.members.find((member) => member.accountId === myAccountId);
+  const myClass = me?.classId ?? '';
+  // Before the first state sync there is no revision to name.
+  const synced = (view?.revision ?? 0) >= 1;
   const allReady =
     view !== null && view.members.every((member) => member.ready && member.connected);
-  const myClass = view?.members.find((member) => member.accountId === myAccountId)?.classId ?? '';
 
   // Union of the members' licenses, with who brings each ship (arrival order).
   const ships = new Map<string, string[]>();
@@ -161,14 +163,14 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
           <button
             type="button"
             onClick={() => party.setReady(view.revision, !me?.ready)}
-            disabled={!me}
+            disabled={!me || !synced}
           >
             {me?.ready ? 'Não estou pronto' : 'Estou pronto'}
           </button>{' '}
           {isLeader ? (
             <button
               type="button"
-              disabled={!allReady || !view.selectedShipId}
+              disabled={!synced || !allReady || !view.selectedShipId}
               onClick={() => party.confirm(view.revision)}
             >
               Confirmar preparação

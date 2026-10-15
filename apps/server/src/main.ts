@@ -1,4 +1,4 @@
-import { createDatabase, createPool, getLoadout, updateProfileClass } from '@orbit/database';
+import { createDatabase, createPool, updateProfileClass } from '@orbit/database';
 import { createGameServer } from './app';
 import { readServerConfig } from './config';
 import { DEFAULT_IDENTITY_POLICY, IdentityService } from './modules/identity/identity-service';
@@ -26,7 +26,6 @@ const server = createGameServer(config, {
   identity,
   db,
   classPreferences: { save: (accountId, classId) => updateProfileClass(db, accountId, classId) },
-  loadouts: { loadout: async (accountId) => (await getLoadout(db, accountId)).entries },
   ...(config.partyCodeGuessesPerAddress !== undefined
     ? { codeGuessesPerAddress: config.partyCodeGuessesPerAddress }
     : {}),

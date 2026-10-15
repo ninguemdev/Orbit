@@ -400,6 +400,13 @@ export class PartyRoom
   /** Pending class saves per account, chained so they finish in order. */
   readonly #classSaves = new Map<string, Promise<void>>();
   #proposal: PreparationProposal | null = null;
+  /** Latest readiness request per member; older answers are dropped. */
+  readonly #readyRequests = new Map<string, number>();
+
+  #logFailure(what: string, error: unknown): void {
+    const name = error instanceof Error ? error.name : typeof error;
+    console.error(`[party] não foi possível ${what}: ${name}`);
+  }
 
   // Preparation -----------------------------------------------------------------
 
@@ -431,6 +438,9 @@ export class PartyRoom
     if (revision !== this.state.revision) {
       return this.#refuse(client, action, PartyErrorCode.StaleRevision);
     }
+    // Only the member's latest request counts, even if an earlier one finishes later.
+    const request = (this.#readyRequests.get(accountId) ?? 0) + 1;
+    this.#readyRequests.set(accountId, request);
     if (!ready) {
       member.ready = false;
       // A confirmation needs everyone ready; it no longer holds.
@@ -439,12 +449,16 @@ export class PartyRoom
       return;
     }
     if (!member.classId) return this.#refuse(client, action, PartyErrorCode.ClassMissing);
+    if (member.ready) return;
     let loadout: readonly PreparedItem[];
     try {
       loadout = await this.#loadoutOf(accountId);
-    } catch {
-      return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);
+    } catch (error) {
+      this.#logFailure('ler o loadout', error);
+      return this.#refuse(client, action, PartyErrorCode.PreparationUnavailable);
     }
+    // A later request from the same member replaced this one.
+    if (this.#readyRequests.get(accountId) !== request) return;
     // Anything may have changed while the loadout was read.
     if (revision !== this.state.revision || this.state.members.get(accountId) !== member) {
       return this.#refuse(client, action, PartyErrorCode.StaleRevision);
@@ -471,11 +485,22 @@ export class PartyRoom
     let loadouts: (readonly PreparedItem[])[];
     try {
       loadouts = await Promise.all(members.map((member) => this.#loadoutOf(member.accountId)));
-    } catch {
-      return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);
+    } catch (error) {
+      this.#logFailure('ler os loadouts', error);
+      return this.#refuse(client, action, PartyErrorCode.PreparationUnavailable);
     }
+    // Everything checked before the read is checked again: leadership may have passed,
+    // someone may have stopped being ready (which keeps the revision), or left.
     if (revision !== this.state.revision) {
       return this.#refuse(client, action, PartyErrorCode.StaleRevision);
+    }
+    if (!this.#isLeader(client)) return this.#refuse(client, action, PartyErrorCode.NotLeader);
+    const now = [...this.state.members.values()];
+    const sameRoster =
+      now.length === members.length && now.every((member, index) => member === members[index]);
+    if (!sameRoster) return this.#refuse(client, action, PartyErrorCode.StaleRevision);
+    if (now.some((member) => !member.ready || !member.connected)) {
+      return this.#refuse(client, action, PartyErrorCode.MembersNotReady);
     }
     if (loadouts.some((loadout) => loadout.some((item) => item.issue !== null))) {
       return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);

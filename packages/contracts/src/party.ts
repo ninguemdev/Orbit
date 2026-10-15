@@ -79,6 +79,8 @@ export const PartyErrorCode = {
   ShipMissing: 'ship_missing',
   /** Someone is not ready or not connected. */
   MembersNotReady: 'members_not_ready',
+  /** The saved loadouts could not be read now; nothing changed. */
+  PreparationUnavailable: 'preparation_unavailable',
 } as const;
 export type PartyErrorCode = (typeof PartyErrorCode)[keyof typeof PartyErrorCode];
 

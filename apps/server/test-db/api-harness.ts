@@ -8,7 +8,6 @@ import {
   createThrowawayDatabase,
   readDatabaseUrl,
   runMigrations,
-  getLoadout,
   updateProfileClass,
 } from '@orbit/database';
 import type pg from 'pg';
@@ -67,7 +66,6 @@ export async function startApiServer(
         classPreferences: {
           save: (accountId, classId) => updateProfileClass(db, accountId, classId),
         },
-        loadouts: { loadout: async (accountId) => (await getLoadout(db, accountId)).entries },
         ...services,
       },
     );

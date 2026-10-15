@@ -17,13 +17,12 @@ import {
   type ActiveSession,
   type Database,
   getInventory,
-  getLoadout,
-  setLoadout,
   getShipLicenses,
   moveStashItem,
   postgresError,
 } from '@orbit/database';
 import { STASH_SLOTS } from '@orbit/catalog';
+import type { LoadoutService } from '../../modules/loadout/loadout-service';
 import { clientAddressKey } from '../../infrastructure/client-address';
 import { OverloadedError } from '../../infrastructure/semaphore';
 import type { PartyAccess } from '../../modules/party/party-access';
@@ -43,8 +42,8 @@ export interface AccountApiOptions {
   readonly party?: PartyAccess;
   /** Inventory reads and stash moves; omitted by servers without inventory routes. */
   readonly db?: Database;
-  /** Called after a loadout is saved, so the player's party drops readiness. */
-  readonly onLoadoutChanged?: (accountId: string) => void;
+  /** Loadout reads and saves; omitted by servers without a database. */
+  readonly loadouts?: LoadoutService;
   readonly now?: () => Date;
 }
 
@@ -221,8 +220,12 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
         response.status(204).end();
       }),
     );
+  }
+
+  const { loadouts } = options;
+  if (loadouts) {
     const sendLoadout = async (response: Response, accountId: string) => {
-      const loadout = await getLoadout(db, accountId);
+      const loadout = await loadouts.read(accountId);
       const body: LoadoutResponse = {
         classId: loadout.classId,
         entries: loadout.entries.map(({ slot, instanceId, itemId, quantity, issue }) => ({
@@ -245,7 +248,8 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
         // The body names items and slots only; ownership is checked against the session.
         const parsed = setLoadoutSchema.safeParse(request.body);
         if (!parsed.success) return fail(response, AccountErrorCode.InvalidInput);
-        const result = await setLoadout(db, session.accountId, parsed.data.picks);
+        // Saving through the service also drops the readiness of the player's party.
+        const result = await loadouts.save(session.accountId, parsed.data.picks);
         if (!result.ok) {
           if (result.issues === null) return fail(response, AccountErrorCode.Unauthenticated);
           const body: LoadoutRefusalBody = {
@@ -255,7 +259,6 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
           response.status(422).json(body);
           return;
         }
-        options.onLoadoutChanged?.(session.accountId);
         await sendLoadout(response, session.accountId);
       }),
     );

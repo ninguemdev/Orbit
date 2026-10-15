@@ -230,6 +230,64 @@ describe('party readiness and confirmation', () => {
     await waitFor(() => party.state.confirmedRevision === 0, 'confirmação desfeita');
   });
 
+  /** Holds loadout reads until released, to act while the room waits for the database. */
+  async function lockLoadouts(): Promise<() => Promise<void>> {
+    const connection = await api.pool.connect();
+    await connection.query('BEGIN');
+    await connection.query('LOCK TABLE loadout_items IN ACCESS EXCLUSIVE MODE');
+    return async () => {
+      await connection.query('ROLLBACK');
+      connection.release();
+    };
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+
+  it('does not confirm someone who stopped being ready while loadouts were read', async () => {
+    const { guest, party, guestRoom } = await pair();
+    await readyAll([party, 0], [guestRoom, 0]);
+    const leaderRefusals = refusals(party);
+    const release = await lockLoadouts();
+    party.send(PartyClientMessage.Confirm, { revision: party.state.revision });
+    await settle();
+    guestRoom.send(PartyClientMessage.SetReady, {
+      revision: guestRoom.state.revision,
+      ready: false,
+    });
+    await waitFor(() => memberOf(party, guest.id)?.ready === false, 'convidado não pronto');
+    await release();
+    await waitFor(() => leaderRefusals.length === 1, 'confirmação recusada');
+    expect(leaderRefusals[0]?.code).toBe('members_not_ready');
+    expect(party.state.confirmedRevision).toBe(0);
+  });
+
+  it('keeps the latest readiness choice when an earlier one finishes later', async () => {
+    const { guest, party, guestRoom } = await pair();
+    const release = await lockLoadouts();
+    const revision = guestRoom.state.revision;
+    guestRoom.send(PartyClientMessage.SetReady, { revision, ready: true });
+    await settle();
+    guestRoom.send(PartyClientMessage.SetReady, { revision, ready: false });
+    await settle();
+    await release();
+    await settle();
+    expect(memberOf(party, guest.id)?.ready).toBe(false);
+  });
+
+  it('refuses a confirmation whose sender handed over leadership meanwhile', async () => {
+    const { guest, party, guestRoom } = await pair();
+    await readyAll([party, 0], [guestRoom, 0]);
+    const leaderRefusals = refusals(party);
+    const release = await lockLoadouts();
+    party.send(PartyClientMessage.Confirm, { revision: party.state.revision });
+    await settle();
+    party.send(PartyClientMessage.Promote, { accountId: guest.id });
+    await waitFor(() => party.state.leaderId === guest.id, 'nova liderança');
+    await release();
+    await waitFor(() => leaderRefusals.length === 1, 'confirmação recusada');
+    expect(leaderRefusals[0]?.code).toBe('not_leader');
+    expect(party.state.confirmedRevision).toBe(0);
+  });
+
   it('never confirms a roster that changed at the same time', async () => {
     const { party, guestRoom } = await pair();
 
