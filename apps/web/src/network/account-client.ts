@@ -14,7 +14,11 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; code: ClientErro
 const KNOWN_CODES = new Set<string>(Object.values(AccountErrorCode));
 
 /** Calls the account API on the page's own origin; the session lives in an HttpOnly cookie. */
-async function request<T>(path: string, method: string, body?: unknown): Promise<ApiResult<T>> {
+export async function requestJson<T>(
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<ApiResult<T>> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -33,16 +37,30 @@ async function request<T>(path: string, method: string, body?: unknown): Promise
   return { ok: false, code: code && KNOWN_CODES.has(code) ? code : 'unexpected' };
 }
 
+/**
+ * Retries an idempotent read after a transient failure (no answer, or a proxy error
+ * outside the API contract). Writes are never retried automatically.
+ */
+async function withRetry<T>(read: () => Promise<ApiResult<T>>, retries = 2): Promise<ApiResult<T>> {
+  for (let attempt = 0; ; attempt++) {
+    const result = await read();
+    const transient = !result.ok && (result.code === 'network' || result.code === 'unexpected');
+    if (!transient || attempt >= retries) return result;
+    await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+  }
+}
+
 export const accountClient = {
-  me: () => request<MeResponse>(AccountRoute.Me, 'GET'),
+  me: () => withRetry(() => requestJson<MeResponse>(AccountRoute.Me, 'GET')),
   signUp: (nick: string, password: string) =>
-    request<MeResponse>(AccountRoute.Accounts, 'POST', { nick, password }),
+    requestJson<MeResponse>(AccountRoute.Accounts, 'POST', { nick, password }),
   login: (nick: string, password: string) =>
-    request<MeResponse>(AccountRoute.Sessions, 'POST', { nick, password }),
-  logout: () => request<null>(AccountRoute.CurrentSession, 'DELETE'),
-  createRecoveryCode: () => request<RecoveryCodeResponse>(AccountRoute.MyRecoveryCode, 'POST', {}),
+    requestJson<MeResponse>(AccountRoute.Sessions, 'POST', { nick, password }),
+  logout: () => requestJson<null>(AccountRoute.CurrentSession, 'DELETE'),
+  createRecoveryCode: () =>
+    requestJson<RecoveryCodeResponse>(AccountRoute.MyRecoveryCode, 'POST', {}),
   recover: (nick: string, code: string, newPassword: string) =>
-    request<MeResponse>(AccountRoute.Recovery, 'POST', { nick, code, newPassword }),
+    requestJson<MeResponse>(AccountRoute.Recovery, 'POST', { nick, code, newPassword }),
 };
 
 /** Messages that say what to do next without revealing whether an account exists. */
@@ -69,5 +87,13 @@ export function describeAccountError(code: ClientErrorCode): string {
       return 'Não foi possível falar com o servidor. Verifique a conexão e tente de novo.';
     case 'unexpected':
       return 'O servidor encontrou um erro. Tente de novo em instantes.';
+    case 'invalid_invite_code':
+      return 'Código de party não encontrado. Confira as letras e números.';
+    case 'invite_not_found':
+      return 'Esse convite expirou ou já foi usado.';
+    case 'party_full':
+      return 'A party já está completa.';
+    case 'removed_from_party':
+      return 'O líder removeu você desta party. Para voltar, peça um novo convite.';
   }
 }

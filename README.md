@@ -106,6 +106,15 @@ Copie `.env.example` para `.env` antes de tudo: o servidor exige `DATABASE_URL` 
 4. **WASD** ou setas movem o tripulante dentro da nave. Para pilotar, passe pela porta da ponte até o círculo amarelo do console e pressione **E**. No comando, **W/S** aceleram/freiam e **A/D** giram. **E** ou **Esc** liberam o comando.
 5. A outra janela vê a mesma nave se mover. Se ela tentar assumir o comando ocupado, o painel informa o motivo.
 
+### Party
+
+Depois de entrar na conta, cada jogador já está numa party só sua, com um código de 6 caracteres. Para jogar junto:
+
+- Digite o código de outra party em **Entrar em outra party**; ou
+- Como líder, convide pelo nick em **Convidar jogador online**; a outra pessoa aceita no próprio menu.
+
+O líder pode **Passar liderança** e **Remover** membros (até 4 por party). Quem sai volta para uma party só sua; se o líder sai, o membro mais antigo assume. A sala de desenvolvimento ainda é compartilhada por todos, independentemente da party.
+
 ### API de conta
 
 Rotas JSON no servidor de jogo, com sessão em cookie `orbit_session` (HttpOnly, SameSite=Strict, 7 dias; `Secure` em produção):
@@ -132,6 +141,7 @@ Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGIN
 - Uma queda reserva o assento por 60 s. O tripulante aparece como "reconectando", e fechar a aba deixa o personagem na sala até esse prazo. A detecção depende do heartbeat do servidor e pode levar alguns segundos.
 - Um único setor fixo, um casco de nave e colisão por círculos contra asteroides. Não há dano, boost, consoles extras, EVA nem combate.
 - A sala de desenvolvimento ainda não valida a sessão: o nick da conta é usado como rótulo, e o roster autenticado chega na V03.02.
+- Parties ficam na memória do processo de jogo: reiniciar o servidor desfaz as parties (as contas permanecem).
 - Sem e-mail: quem perder a senha e não tiver gerado o código de recuperação não recupera a conta.
 - Sem deploy, HTTPS nem proxy. Use apenas em ambiente de desenvolvimento.
 

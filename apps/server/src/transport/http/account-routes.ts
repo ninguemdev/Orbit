@@ -3,6 +3,7 @@ import {
   AccountErrorCode,
   type AccountErrorBody,
   AccountRoute,
+  PartyRoute,
   type RecoveryCodeResponse,
   SESSION_COOKIE,
   updateProfileSchema,
@@ -10,6 +11,7 @@ import {
 import { type ActiveSession, postgresError } from '@orbit/database';
 import { clientAddressKey } from '../../infrastructure/client-address';
 import { OverloadedError } from '../../infrastructure/semaphore';
+import type { PartyAccess } from '../../modules/party/party-access';
 import type {
   IdentityFailure,
   IdentityService,
@@ -22,6 +24,8 @@ export interface AccountApiOptions {
   readonly identity: IdentityService;
   readonly access: AccessPolicy;
   readonly cookie: CookieOptions;
+  /** Party room tickets; omitted by servers without parties. */
+  readonly party?: PartyAccess;
   readonly now?: () => Date;
 }
 
@@ -31,7 +35,11 @@ const STATUS: Record<string, number> = {
   [AccountErrorCode.InvalidCredentials]: 401,
   [AccountErrorCode.InvalidRecovery]: 401,
   [AccountErrorCode.OriginNotAllowed]: 403,
+  [AccountErrorCode.RemovedFromParty]: 403,
+  [AccountErrorCode.InvalidInviteCode]: 404,
+  [AccountErrorCode.InviteNotFound]: 404,
   [AccountErrorCode.NickTaken]: 409,
+  [AccountErrorCode.PartyFull]: 409,
   [AccountErrorCode.UnsupportedMediaType]: 415,
   [AccountErrorCode.RateLimited]: 429,
   [AccountErrorCode.Overloaded]: 503,
@@ -145,6 +153,22 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
       response.json(result);
     }),
   );
+
+  const { party } = options;
+  if (party) {
+    router.post(
+      PartyRoute.Tickets,
+      withSession(async (request, response, session) => {
+        const result = party.issue(
+          request.body,
+          { accountId: session.accountId, nick: session.nick },
+          address(request),
+        );
+        if (!result.ok) return fail(response, result.code);
+        response.status(201).json(result.response);
+      }),
+    );
+  }
 
   router.use(
     '/api',

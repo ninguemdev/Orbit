@@ -26,6 +26,11 @@ export const AccountErrorCode = {
   Overloaded: 'overloaded',
   /** Same answer for unknown nick, wrong code or already used code. */
   InvalidRecovery: 'invalid_recovery',
+  /** Party ticket requests (see party.ts for in-room refusals). */
+  InvalidInviteCode: 'invalid_invite_code',
+  InviteNotFound: 'invite_not_found',
+  PartyFull: 'party_full',
+  RemovedFromParty: 'removed_from_party',
 } as const;
 export type AccountErrorCode = (typeof AccountErrorCode)[keyof typeof AccountErrorCode];
 

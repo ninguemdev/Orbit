@@ -29,6 +29,7 @@
 | D23 | Limites de login/cadastro em memória do processo | Adotada na 0.2 | Ao rodar mais de um processo de jogo |
 | D24 | Substituir a política de CORS padrão do Colyseus (reflete qualquer Origin com credenciais) pela lista `ALLOWED_ORIGINS` | Adotada na 0.2 | Se o Colyseus mudar o padrão |
 | D25 | Servidor de jogo exige `DATABASE_URL` desde a 0.2 | Adotada na 0.2 | — |
+| D26 | Parties em salas Colyseus em memória (sem tabela), entrada por ticket de uso único emitido pela API de conta | Adotada na 0.2 | Quando houver vários processos de jogo |
 
 Quando modificar uma decisão, registrar motivação, nova regra e documentos/tarefas afetados. Não alterar silenciosamente números centrais como velocidade de boost ou elegibilidade de extração.
 

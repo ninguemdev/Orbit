@@ -6,6 +6,8 @@ export interface OrbitDebugView {
   readonly status: string;
   /** Last server state received, as plain data. Read-only: nothing here sends intents. */
   latest(): unknown;
+  /** Ship pose per server tick for the recently received states. */
+  shipHistory(): unknown;
 }
 
 declare global {
@@ -23,6 +25,9 @@ export function installDebugHook(connection: SectorConnection): () => void {
     roomId: connection.roomId,
     get status() {
       return connection.status;
+    },
+    shipHistory() {
+      return connection.recent().map((snapshot) => ({ tick: snapshot.tick, ship: snapshot.ship }));
     },
     latest() {
       const snapshot = connection.latest();

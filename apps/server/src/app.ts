@@ -1,11 +1,15 @@
 import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { DEV_ROOM_NAME } from '@orbit/contracts';
+import { DEV_ROOM_NAME, PARTY_ROOM_NAME } from '@orbit/contracts';
 import type { ServerConfig } from './config';
 import type { IdentityService } from './modules/identity/identity-service';
+import { PartyAccess } from './modules/party/party-access';
+import { PartyDirectory } from './modules/party/party-directory';
+import { RoomTicketStore } from './modules/party/room-tickets';
 import { isOriginAllowed } from './transport/access-policy';
 import { defineDevSectorRoom } from './transport/dev-sector-room';
 import { createAccountApi } from './transport/http/account-routes';
+import { definePartyRoom } from './transport/party-room';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -21,6 +25,9 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
     allowMissingOrigin: config.allowMissingOrigin,
   };
   const { identity } = services;
+  const tickets = new RoomTicketStore();
+  const directory = new PartyDirectory();
+  const party = new PartyAccess({ tickets, directory });
   const server = new Server({
     greet: false,
     transport: new WebSocketTransport({
@@ -39,6 +46,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
             app.use(
               createAccountApi({
                 identity,
+                party,
                 access: policy,
                 cookie: { secure: config.cookieSecure },
               }),
@@ -47,6 +55,14 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
         }
       : {}),
   });
+  // Idle HTTP connections outlive reverse-proxy keep-alive (Node's default is 5 s),
+  // so a proxy never reuses a socket the server is closing.
+  const http = server.transport.server;
+  if (http) {
+    http.keepAliveTimeout = 75_000;
+    http.headersTimeout = 76_000;
+  }
   server.define(DEV_ROOM_NAME, defineDevSectorRoom(policy));
+  server.define(PARTY_ROOM_NAME, definePartyRoom({ tickets, directory }));
   return server;
 }

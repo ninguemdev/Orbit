@@ -40,6 +40,9 @@ export default defineConfig({
         PORT: String(SERVER_PORT),
         ALLOWED_ORIGINS: `http://127.0.0.1:${WEB_PORT}`,
         DATABASE_URL: process.env['DATABASE_URL'] ?? '',
+        // Every test signs up fresh accounts from the same address.
+        SIGNUPS_PER_ADDRESS: '1000',
+        LOGIN_ATTEMPTS_PER_ADDRESS: '1000',
       },
     },
     {

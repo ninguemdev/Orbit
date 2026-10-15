@@ -1,4 +1,5 @@
 import { type Browser, type Page, expect, test } from '@playwright/test';
+import { signUpInNewContext } from './support/accounts';
 
 interface CrewView {
   readonly id: string;
@@ -17,7 +18,12 @@ interface WorldView {
 
 declare global {
   interface Window {
-    __orbit?: { sessionId: string; status: string; latest(): WorldView | null };
+    __orbit?: {
+      sessionId: string;
+      status: string;
+      latest(): WorldView | null;
+      shipHistory(): unknown;
+    };
   }
 }
 
@@ -31,17 +37,7 @@ async function dropConnection(id: string, refuseMs: number) {
 
 /** Creates a fresh account (the nick becomes the crew label) and enters the room. */
 async function joinAs(browser: Browser, name: string): Promise<Page> {
-  const context = await browser.newContext({ viewport: { width: 1100, height: 700 } });
-  const page = await context.newPage();
-  await page.goto('/?debug=1');
-  const nick = `${name}_${Date.now().toString(36).slice(-6)}`;
-  const password = 'senha de teste longa';
-  await page.getByRole('button', { name: 'Criar conta' }).click();
-  const form = page.getByRole('form');
-  await form.locator('input[name="nick"]').fill(nick);
-  await form.locator('input[name="password"]').fill(password);
-  await form.locator('input[name="confirmation"]').fill(password);
-  await form.getByRole('button', { name: 'Criar conta' }).click();
+  const { page } = await signUpInNewContext(browser, name, '/?debug=1');
   await page.getByRole('button', { name: 'Entrar na sala' }).click();
   await expect(page.getByTestId('connection-status')).toContainText('Conectado');
   await page.locator('canvas').waitFor();
@@ -59,19 +55,17 @@ const world = (page: Page) =>
 
 const sessionId = (page: Page) => page.evaluate(() => window.__orbit?.sessionId ?? '');
 
-/** Samples both pages until they report ship poses for the same server ticks. */
+type ShipAtTick = { tick: number; ship: WorldView['ship'] };
+
+/** Ship poses that both pages received for the same server ticks (recent history). */
 async function shipsAtSameTicks(a: Page, b: Page) {
-  const seenA = new Map<number, WorldView['ship']>();
-  const seenB = new Map<number, WorldView['ship']>();
-  for (let i = 0; i < 100; i++) {
-    const [wa, wb] = await Promise.all([world(a), world(b)]);
-    seenA.set(wa.tick, wa.ship);
-    seenB.set(wb.tick, wb.ship);
-    await a.waitForTimeout(10);
-  }
-  return [...seenA.keys()]
-    .filter((tick) => seenB.has(tick))
-    .map((tick) => ({ tick, a: seenA.get(tick), b: seenB.get(tick) }));
+  const history = (page: Page) =>
+    page.evaluate(() => (window.__orbit?.shipHistory() ?? []) as ShipAtTick[]);
+  const [historyA, historyB] = await Promise.all([history(a), history(b)]);
+  const byTickB = new Map(historyB.map((entry) => [entry.tick, entry.ship]));
+  return historyA
+    .filter((entry) => byTickB.has(entry.tick))
+    .map((entry) => ({ tick: entry.tick, a: entry.ship, b: byTickB.get(entry.tick) }));
 }
 
 async function hold(page: Page, key: string, ms: number) {
@@ -104,13 +98,18 @@ async function walkToHelm(page: Page, id: string) {
     if (!member) throw new Error('tripulante ausente');
     return member;
   };
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 30; attempt++) {
     const { x, y } = await position();
     if (Math.abs(y) <= 20 && x >= 100) return;
     // Keep keyboard focus on the game in case anything moved it away.
     await page.locator('canvas').click({ position: { x: 20, y: 650 } });
     if (Math.abs(y) > 20) {
-      await holdUntil(page, y > 0 ? 'KeyW' : 'KeyS', async () => (await position()).y !== y);
+      // A short tap moves one or two ticks (7.5–15 px), less than the ±20 px band, so
+      // corrections converge even when frames are slow; a missed tap is just retried.
+      await page.keyboard.down(y > 0 ? 'KeyW' : 'KeyS');
+      await page.waitForTimeout(30);
+      await page.keyboard.up(y > 0 ? 'KeyW' : 'KeyS');
+      await page.waitForTimeout(400);
     } else {
       await holdUntil(page, 'KeyD', async () => (await position()).x >= 100);
     }

@@ -127,6 +127,11 @@ export class SectorConnection implements SectorBridge {
     return this.#snapshots.latest();
   }
 
+  /** Recently received snapshots (about the last 1.5 s), for diagnostics. */
+  recent(): readonly WorldSnapshot[] {
+    return this.#snapshots.recent();
+  }
+
   sample(nowMs: number): WorldSnapshot | null {
     return this.#snapshots.sample(nowMs - INTERPOLATION_DELAY_MS);
   }

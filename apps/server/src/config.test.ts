@@ -22,6 +22,14 @@ describe('readServerConfig', () => {
     expect(() => readServerConfig({ ...base, COOKIE_SECURE: 'yes' })).toThrow(/COOKIE_SECURE/);
   });
 
+  it('reads optional per-address limits', () => {
+    expect(readServerConfig(base).signUpsPerAddress).toBeUndefined();
+    expect(readServerConfig({ ...base, SIGNUPS_PER_ADDRESS: '50' }).signUpsPerAddress).toBe(50);
+    expect(() => readServerConfig({ ...base, LOGIN_ATTEMPTS_PER_ADDRESS: '0' })).toThrow(
+      /LOGIN_ATTEMPTS_PER_ADDRESS/,
+    );
+  });
+
   it('reads the number of trusted proxy hops', () => {
     expect(readServerConfig(base).trustProxy).toBe(false);
     expect(readServerConfig({ ...base, TRUST_PROXY: '1' }).trustProxy).toBe(1);

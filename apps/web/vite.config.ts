@@ -1,3 +1,4 @@
+import { Agent } from 'node:http';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv } from 'vite';
 
@@ -10,7 +11,11 @@ export default defineConfig(({ mode }) => {
   const server = env['VITE_SERVER_URL'] || 'http://127.0.0.1:2567';
   // The account API is served under the page's own origin, so the session cookie is
   // first-party, as it will be behind the production reverse proxy.
-  const proxy = { '/api': { target: server, changeOrigin: false } };
+  // No upstream keep-alive: reusing a socket the game server is closing fails the
+  // request ("socket hang up").
+  const proxy = {
+    '/api': { target: server, changeOrigin: false, agent: new Agent({ keepAlive: false }) },
+  };
   return {
     plugins: [react()],
     envDir: ROOT,
