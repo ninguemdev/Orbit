@@ -22,7 +22,7 @@ export interface GameServices {
   readonly classPreferences?: ClassPreferences;
   /** Database for inventory routes. */
   readonly db?: Database;
-  /** Overrides the invite code attempts allowed per address (tests share one address). */
+  /** Invite code attempts allowed per address (PARTY_CODE_GUESSES_PER_ADDRESS). */
   readonly codeGuessesPerAddress?: number;
 }
 
@@ -37,7 +37,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
   const party = new PartyAccess({
     tickets,
     directory,
-    ...(services.codeGuessesPerAddress
+    ...(services.codeGuessesPerAddress !== undefined
       ? { codeGuessesPerAddress: services.codeGuessesPerAddress }
       : {}),
   });

@@ -45,7 +45,8 @@ describe('catalog consistency', () => {
 
   for (const sector of Object.values(SECTORS)) {
     it(`${sector.id}: ship spawn is clear of obstacles`, () => {
-      const radius = SHIP_HULLS['ship.scout'].handling.radius;
+      // Any ship may start there: use the largest hull.
+      const radius = Math.max(...Object.values(SHIP_HULLS).map((hull) => hull.handling.radius));
       for (const obstacle of sector.obstacles) {
         expect(distance(sector.shipSpawn.position, obstacle)).toBeGreaterThan(
           radius + obstacle.radius,

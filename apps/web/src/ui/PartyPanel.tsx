@@ -1,13 +1,7 @@
 import { type FormEvent, useState } from 'react';
-import {
-  CLASS_DESCRIPTIONS,
-  CLASS_NAMES,
-  CLASS_ORDER,
-  SHIP_HULLS,
-  isClassId,
-  isShipHullId,
-} from '@orbit/catalog';
+import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER, isClassId } from '@orbit/catalog';
 import { PARTY_MAX_MEMBERS } from '@orbit/contracts';
+import { shipName } from './catalog-names';
 import type { PartyControls } from './use-party';
 
 interface PartyPanelProps {
@@ -28,7 +22,6 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
     for (const shipId of member.ships)
       ships.set(shipId, [...(ships.get(shipId) ?? []), member.nick]);
   }
-  const shipName = (shipId: string) => (isShipHullId(shipId) ? SHIP_HULLS[shipId].name : shipId);
 
   const className = (classId: string) =>
     isClassId(classId) ? CLASS_NAMES[classId] : 'classe não escolhida';

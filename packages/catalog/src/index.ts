@@ -213,6 +213,9 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
   },
 };
 
+/** Display and default order of ships: the starter ship first. */
+export const SHIP_ORDER: readonly ShipHullId[] = [ShipHullId.Scout, ShipHullId.Hauler];
+
 export function isShipHullId(value: string): value is ShipHullId {
   return Object.hasOwn(SHIP_HULLS, value);
 }

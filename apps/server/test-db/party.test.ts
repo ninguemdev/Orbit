@@ -224,6 +224,14 @@ describe('parties', () => {
       return [...ships].sort();
     };
 
+    it('starts a new party with the creator first ship in catalog order', async () => {
+      const creator = await account();
+      await grantShipLicense(api.db, creator.id, 'ship.hauler', 'grant:test');
+      const party = await createParty(creator);
+      expect(party.state.selectedShipId).toBe('ship.scout');
+      expect(shipsOf(party, creator.id)).toEqual(['ship.scout', 'ship.hauler']);
+    });
+
     it('offers every member ship once and lets only the leader pick one a member owns', async () => {
       const [leader, guest] = [await account(), await account()];
       await grantShipLicense(api.db, guest.id, 'ship.hauler', 'grant:test');
@@ -234,7 +242,7 @@ describe('parties', () => {
       // Both bring the scout; the union lists it once.
       expect(union(guestRoom)).toEqual(['ship.hauler', 'ship.scout']);
       expect(shipsOf(party, leader.id)).toEqual(['ship.scout']);
-      expect(shipsOf(party, guest.id)).toEqual(['ship.hauler', 'ship.scout']);
+      expect(shipsOf(party, guest.id)).toEqual(['ship.scout', 'ship.hauler']);
 
       // The leader may pick a ship only a guest is licensed for.
       party.send(PartyClientMessage.SelectShip, { shipId: 'ship.hauler' });
@@ -255,9 +263,15 @@ describe('parties', () => {
     });
 
     it('drops the choice when its last owner leaves, but not while another owner stays', async () => {
-      const [leader, first, second] = [await account(), await account(), await account()];
-      await grantShipLicense(api.db, first.id, 'ship.hauler', 'grant:test');
-      await grantShipLicense(api.db, second.id, 'ship.hauler', 'grant:test');
+      const [leader, first, second, late] = [
+        await account(),
+        await account(),
+        await account(),
+        await account(),
+      ];
+      for (const owner of [first, second, late]) {
+        await grantShipLicense(api.db, owner.id, 'ship.hauler', 'grant:test');
+      }
       const party = await createParty(leader);
       const firstRoom = await joinByCode(first, party.state.inviteCode);
       const secondRoom = await joinByCode(second, party.state.inviteCode);
@@ -274,6 +288,11 @@ describe('parties', () => {
       rooms = rooms.filter((room) => room !== secondRoom);
       await waitFor(() => party.state.selectedShipId === '', 'escolha invalidada');
       expect(union(party)).toEqual(['ship.scout']);
+
+      // Someone arriving later brings ships but does not choose for the leader.
+      await joinByCode(late, party.state.inviteCode);
+      await waitFor(() => union(party).length === 2, 'chegada com cargueira');
+      expect(party.state.selectedShipId).toBe('');
       party.send(PartyClientMessage.SelectShip, { shipId: 'ship.hauler' });
       party.send(PartyClientMessage.SelectShip, { shipId: 'ship.scout' });
       await waitFor(() => party.state.selectedShipId === 'ship.scout', 'nova escolha');

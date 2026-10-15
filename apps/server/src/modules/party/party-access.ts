@@ -8,7 +8,7 @@ import { SlidingWindowLimiter } from '../../infrastructure/sliding-window-limite
 import type { PartyDirectory } from './party-directory';
 import type { RoomTicketStore, TicketHolder } from './room-tickets';
 
-export const DEFAULT_CODE_GUESSES_PER_ADDRESS = 20;
+const DEFAULT_CODE_GUESSES_PER_ADDRESS = 20;
 
 export type PartyAccessResult =
   | { readonly ok: true; readonly response: PartyTicketResponse }

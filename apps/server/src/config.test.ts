@@ -25,6 +25,10 @@ describe('readServerConfig', () => {
   it('reads optional per-address limits', () => {
     expect(readServerConfig(base).signUpsPerAddress).toBeUndefined();
     expect(readServerConfig({ ...base, SIGNUPS_PER_ADDRESS: '50' }).signUpsPerAddress).toBe(50);
+    expect(
+      readServerConfig({ ...base, PARTY_CODE_GUESSES_PER_ADDRESS: '7' }).partyCodeGuessesPerAddress,
+    ).toBe(7);
+    expect(readServerConfig(base).partyCodeGuessesPerAddress).toBeUndefined();
     expect(() => readServerConfig({ ...base, LOGIN_ATTEMPTS_PER_ADDRESS: '0' })).toThrow(
       /LOGIN_ATTEMPTS_PER_ADDRESS/,
     );

@@ -220,9 +220,11 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
     router.post(
       PartyRoute.Tickets,
       withSession(async (request, response, session) => {
-        const me = await identity.me(session.accountId);
+        const [me, ships] = await Promise.all([
+          identity.me(session.accountId),
+          db ? getShipLicenses(db, session.accountId) : Promise.resolve([]),
+        ]);
         if (!me) return fail(response, AccountErrorCode.Unauthenticated);
-        const ships = db ? await getShipLicenses(db, session.accountId) : [];
         const result = party.issue(
           request.body,
           {

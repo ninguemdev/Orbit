@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ITEMS, SHIP_HULLS, isItemId, isShipHullId } from '@orbit/catalog';
 import type { InventoryResponse } from '@orbit/contracts';
 import { accountClient, describeAccountError } from '../network/account-client';
-
-const itemName = (itemId: string) => (isItemId(itemId) ? ITEMS[itemId].name : itemId);
-const shipName = (shipId: string) => (isShipHullId(shipId) ? SHIP_HULLS[shipId].name : shipId);
+import { itemName, shipName } from './catalog-names';
 
 /**
  * Permanent possessions of the account, read from the server (never edited locally).

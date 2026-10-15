@@ -1,6 +1,16 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
 import { signUpInNewContext } from './support/accounts';
+
+/** Grants dev data (items and the hauler license) through the database script. */
+function seedDev(nick: string): void {
+  if (!/^[A-Za-z0-9_]+$/.test(nick)) throw new Error(`nick inesperado: ${nick}`);
+  // pnpm is a .cmd on Windows, which needs a shell; the nick was checked above.
+  execFileSync('pnpm', ['db:seed-dev', nick], {
+    stdio: 'pipe',
+    shell: process.platform === 'win32',
+  });
+}
 
 test('forms a party by code and by invite, and hands over leadership', async ({ browser }) => {
   const alfa = await signUpInNewContext(browser, 'Lider');
@@ -25,7 +35,7 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
 
   await test.step('a friend joins with the code', async () => {
     // Bravo receives the hauler license (dev data) before entering Alfa's party.
-    execSync(`pnpm db:seed-dev ${bravo.nick}`, { stdio: 'ignore' });
+    seedDev(bravo.nick);
     const code = (await alfa.page.getByTestId('party-code').textContent()) ?? '';
     await bravo.page.getByLabel('Entrar em outra party (código)').fill(code.toLowerCase());
     await bravo.page.getByRole('button', { name: 'Entrar', exact: true }).click();

@@ -2,7 +2,7 @@
  * Development data: grants a fixed set of items to one account so preparation
  * screens can be exercised. Refused in production. Usage: pnpm db:seed-dev <nick>
  */
-import { ItemId } from '@orbit/catalog';
+import { ItemId, ShipHullId } from '@orbit/catalog';
 import { createDatabase } from '../src/client';
 import { findAccountByNick } from '../src/identity/accounts';
 import { grantItem, grantShipLicense } from '../src/inventory/inventory';
@@ -44,7 +44,7 @@ try {
         reason: 'dados de desenvolvimento',
       });
     }
-    await grantShipLicense(db, account.id, 'ship.hauler', 'grant:dev');
+    await grantShipLicense(db, account.id, ShipHullId.Hauler, 'grant:dev');
     console.info(`[seed-dev] itens de teste e licença da Cargueira concedidos a ${account.nick}`);
   }
 } finally {
