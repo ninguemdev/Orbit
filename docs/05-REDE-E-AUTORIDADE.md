@@ -83,6 +83,7 @@ Verificado com Colyseus 0.18 (core 0.18.18, schema 5.0.39, SDK 0.18.5) em testes
 - **Limites:** login por endereço, tentativas por nick (5 sem sucesso em 15 minutos bloqueiam o nick, inclusive para a senha certa; cada tentativa conta antes do hash, então chutes simultâneos não escapam) e cadastro por endereço. Endereços IPv6 contam por /64. Atrás de proxy reverso, `TRUST_PROXY` informa quantos saltos confiar para obter o IP real. Os contadores ficam em memória do processo, com tamanho limitado (os mais antigos saem primeiro sob inundação de chaves); vários processos exigirão armazenamento compartilhado.
 - **Hash e enumeração:** o hash fictício usado para nicks inexistentes é calculado uma vez, fora da fila, e não fica em cache se falhar; o semáforo entrega a vaga direto ao próximo da fila.
 - **Logs:** erros inesperados registram só tipo e código, nunca a mensagem do driver, que traz parâmetros SQL.
+- **Recuperação:** código opcional de 160 bits (32 caracteres Crockford base32), mostrado uma vez; o banco guarda o SHA-256. Gerar outro invalida o anterior. O resgate atualiza a senha, consome o código com UPDATE condicional (dois resgates simultâneos: só um vence) e revoga todas as sessões, na mesma transação. Nick inexistente, código errado e código usado recebem a mesma resposta depois do mesmo custo de hash, e há limite por endereço e por nick.
 
 ## Entrada, previsão e reconciliação
 
