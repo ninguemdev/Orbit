@@ -150,8 +150,13 @@ describe('piloting the ship with an exclusive helm', () => {
   it('frees the helm when the operator leaves it, so another member can take it', async () => {
     a.send(ClientMessage.HelmRelease);
     await waitFor(() => b.state.ship.operatorId === '', { label: 'liberação' });
+    // Make sure B stands within reach: earlier walks may stop a few pixels off target.
+    await walk(b, [{ x: HELM.seat.x - 12, y: 8 }], seqB);
+    const refusedBefore = rejectedB.length;
     b.send(ClientMessage.HelmRequest);
-    await waitFor(() => a.state.ship.operatorId === b.sessionId, { label: 'novo operador' });
+    await waitFor(() => a.state.ship.operatorId === b.sessionId, {
+      label: () => `novo operador (recusas: ${JSON.stringify(rejectedB.slice(refusedBefore))})`,
+    });
   });
 
   it('frees the helm when the operator disconnects', async () => {

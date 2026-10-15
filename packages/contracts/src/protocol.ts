@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { nickSchema } from './identity';
 
 /** Bump when a message or state field changes incompatibly. */
 export const PROTOCOL_VERSION = 1;
@@ -64,7 +65,8 @@ export type ShipInput = z.infer<typeof shipInputSchema>;
 /** Messages without payload accept `undefined` or an empty object. */
 export const emptyPayloadSchema = z.union([z.undefined(), z.strictObject({})]);
 
-export const displayNameSchema = z.string().regex(/^[A-Za-z0-9_]{3,20}$/);
+/** Display name in the development room; same rules as the account nick. */
+export const displayNameSchema = nickSchema;
 
 export const joinOptionsSchema = z.object({
   protocolVersion: z.literal(PROTOCOL_VERSION),

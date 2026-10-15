@@ -1,3 +1,5 @@
+import { APPEARANCE_COLORS, APPEARANCE_COLOR_ORDER } from '@orbit/catalog';
+
 /** Flat colors for the geometric art. Crew colors are paired with name labels so color is never the only cue. */
 export const PALETTE = {
   space: 0x05070d,
@@ -15,8 +17,14 @@ export const PALETTE = {
   self: 0xffffff,
 } as const;
 
-export const CREW_COLORS = [0x4fc3f7, 0xffb74d, 0x81c784, 0xf06292] as const;
+const CREW_COLORS: readonly number[] = APPEARANCE_COLOR_ORDER.map(
+  (id) => APPEARANCE_COLORS[id].hex,
+);
+const FIRST_CREW_COLOR =
+  APPEARANCE_COLORS[APPEARANCE_COLOR_ORDER[0] ?? 'appearance.color.cyan'].hex;
 
+/** Never white: white outlines mark the local player. */
 export function crewColor(index: number): number {
-  return CREW_COLORS[index % CREW_COLORS.length] ?? CREW_COLORS[0];
+  if (!Number.isInteger(index) || index < 0) return FIRST_CREW_COLOR;
+  return CREW_COLORS[index % CREW_COLORS.length] ?? FIRST_CREW_COLOR;
 }

@@ -61,6 +61,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate
       - run: pnpm db:smoke
+      - run: pnpm test:db
+      - name: Schema e migrações sincronizados
+        run: |
+          pnpm --filter @orbit/database generate
+          test -z "$(git status --porcelain packages/database/migrations)"
 
   e2e:
     name: Multiplayer com dois navegadores

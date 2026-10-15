@@ -4,7 +4,9 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 
 ## Unreleased
 
-Nada ainda.
+### Adicionado
+
+- Tabelas de identidade (`accounts`, `sessions`, `account_recovery`, `profiles`) com nick único sem diferenciar maiúsculas, apenas hashes Argon2id/SHA-256 e testes de integração SQL (`pnpm test:db`).
 
 ## 0.1.0 — 2026-10-15
 

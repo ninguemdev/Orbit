@@ -7,5 +7,7 @@ export default defineConfig({
     // Integration tests run real servers in real time; running files one at a time
     // keeps tick timing assertions independent of machine load.
     fileParallelism: false,
+    // Integration tests wait on real ticks and network round trips.
+    testTimeout: 15_000,
   },
 });

@@ -42,11 +42,17 @@ export async function joinDevRoom(
 
 export async function waitFor(
   predicate: () => boolean,
-  { timeoutMs = 5000, label = 'condição' } = {},
+  {
+    timeoutMs = 5000,
+    label = 'condição',
+  }: { timeoutMs?: number; label?: string | (() => string) } = {},
 ): Promise<void> {
   const deadline = performance.now() + timeoutMs;
   while (!predicate()) {
-    if (performance.now() > deadline) throw new Error(`Tempo esgotado aguardando ${label}`);
+    if (performance.now() > deadline) {
+      // A lazy label reflects what arrived while waiting (e.g. server refusals).
+      throw new Error(`Tempo esgotado aguardando ${typeof label === 'function' ? label() : label}`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
