@@ -97,10 +97,13 @@ export const profiles = pgTable(
       .primaryKey()
       .references(() => accounts.id, { onDelete: 'cascade' }),
     colorId: text('color_id').notNull(),
+    /** Class chosen for the next mission; null until the player picks one. */
+    classId: text('class_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
     check('profiles_color_id_format', sql`${table.colorId} ~ '^appearance\\.color\\.[a-z]+$'`),
+    check('profiles_class_id_format', sql`${table.classId} ~ '^class\\.[a-z]+$'`),
   ],
 );

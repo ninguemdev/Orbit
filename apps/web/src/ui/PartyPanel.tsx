@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER, isClassId } from '@orbit/catalog';
 import { PARTY_MAX_MEMBERS } from '@orbit/contracts';
 import type { PartyControls } from './use-party';
@@ -14,19 +14,7 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
   const { view } = party;
   const isLeader = view?.leaderId === myAccountId;
   const myClass = view?.members.find((member) => member.accountId === myAccountId)?.classId ?? '';
-  // Shows the choice immediately; the synchronized state confirms it a moment later.
-  const [pendingClass, setPendingClass] = useState<string | null>(null);
-  useEffect(() => {
-    if (pendingClass === null) return undefined;
-    if (pendingClass === myClass) {
-      setPendingClass(null);
-      return undefined;
-    }
-    // Not confirmed (refused or lost): fall back to the synchronized state.
-    const timer = setTimeout(() => setPendingClass(null), 3000);
-    return () => clearTimeout(timer);
-  }, [myClass, pendingClass]);
-  const shownClass = pendingClass ?? myClass;
+
   const className = (classId: string) =>
     isClassId(classId) ? CLASS_NAMES[classId] : 'classe não escolhida';
 
@@ -95,8 +83,8 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
         <fieldset className="class-picker">
           <legend>Sua classe na próxima missão</legend>
           <p className="hint">
-            Classes repetidas são permitidas. Nesta versão a escolha só identifica a função na
-            party; os efeitos entram no jogo nas versões indicadas.
+            Classes repetidas são permitidas e a escolha fica salva na sua conta. Nesta versão ela
+            só identifica a função na party; os efeitos entram no jogo nas versões indicadas.
           </p>
           {CLASS_ORDER.map((classId) => (
             <label key={classId} className="class-option">
@@ -104,11 +92,8 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
                 type="radio"
                 name="class"
                 value={classId}
-                checked={shownClass === classId}
-                onChange={() => {
-                  setPendingClass(classId);
-                  party.selectClass(classId);
-                }}
+                checked={myClass === classId}
+                onChange={() => party.selectClass(classId)}
               />
               <strong>{CLASS_NAMES[classId]}</strong>
               <span className="hint">

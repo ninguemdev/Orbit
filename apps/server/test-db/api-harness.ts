@@ -8,6 +8,7 @@ import {
   createThrowawayDatabase,
   readDatabaseUrl,
   runMigrations,
+  updateProfileClass,
 } from '@orbit/database';
 import type pg from 'pg';
 import { createGameServer } from '../src/app';
@@ -53,7 +54,12 @@ export async function startApiServer(policy: IdentityPolicy): Promise<ApiServer>
         cookieSecure: false,
         trustProxy: false,
       },
-      { identity: new IdentityService({ db, hasher, policy }) },
+      {
+        identity: new IdentityService({ db, hasher, policy }),
+        classPreferences: {
+          save: (accountId, classId) => updateProfileClass(db, accountId, classId),
+        },
+      },
     );
     await server.listen(0, '127.0.0.1');
     const address = server.transport.server?.address() as AddressInfo;

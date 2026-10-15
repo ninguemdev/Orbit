@@ -201,8 +201,7 @@ button.secondary {
   border-radius: 6px;
 }
 
-.class-option {
-  display: grid !important;
+.menu label.class-option {
   grid-template-columns: auto 1fr;
   column-gap: 0.5rem;
   margin-top: 0.5rem;

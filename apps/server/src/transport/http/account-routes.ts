@@ -159,9 +159,11 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
     router.post(
       PartyRoute.Tickets,
       withSession(async (request, response, session) => {
+        const me = await identity.me(session.accountId);
+        if (!me) return fail(response, AccountErrorCode.Unauthenticated);
         const result = party.issue(
           request.body,
-          { accountId: session.accountId, nick: session.nick },
+          { accountId: session.accountId, nick: session.nick, classId: me.profile.classId ?? '' },
           address(request),
         );
         if (!result.ok) return fail(response, result.code);

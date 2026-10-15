@@ -182,7 +182,7 @@ export class IdentityService {
     if (!profile) return null;
     return {
       account: { id: profile.accountId, nick: profile.nick },
-      profile: { colorId: profile.colorId },
+      profile: { colorId: profile.colorId, classId: profile.classId },
       hasRecoveryCode,
     };
   }

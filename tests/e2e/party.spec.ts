@@ -121,8 +121,12 @@ test('four players choose classes and everyone sees the current roster', async (
     await expect(page.getByRole('heading', { name: /Sua party \(4\/4\)/ })).toBeVisible();
   }
 
-  const choose = (index: number, name: string) =>
-    players[index]?.page.getByRole('radio', { name: new RegExp(`^${name}`) }).check();
+  // The radio follows the server state, so click and wait for the confirmation.
+  const choose = async (index: number, name: string) => {
+    const radio = players[index]?.page.getByRole('radio', { name: new RegExp(`^${name}`) });
+    await radio?.click();
+    if (radio) await expect(radio).toBeChecked();
+  };
   await choose(0, 'Piloto');
   await choose(1, 'Engenheiro');
   await choose(2, 'Médico');

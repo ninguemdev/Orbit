@@ -94,16 +94,31 @@ export interface ProfileView {
   readonly accountId: string;
   readonly nick: string;
   readonly colorId: string;
+  readonly classId: string | null;
 }
 
 export async function getProfile(db: Database, accountId: string): Promise<ProfileView | null> {
   const [row] = await db
-    .select({ accountId: profiles.accountId, nick: accounts.nick, colorId: profiles.colorId })
+    .select({
+      accountId: profiles.accountId,
+      nick: accounts.nick,
+      colorId: profiles.colorId,
+      classId: profiles.classId,
+    })
     .from(profiles)
     .innerJoin(accounts, eq(accounts.id, profiles.accountId))
     .where(eq(profiles.accountId, accountId))
     .limit(1);
   return row ?? null;
+}
+
+/** Remembers the class the player chose; the caller passes a catalog-validated ID. */
+export async function updateProfileClass(
+  db: Database,
+  accountId: string,
+  classId: string,
+): Promise<void> {
+  await db.update(profiles).set({ classId }).where(eq(profiles.accountId, accountId));
 }
 
 /** Updates only the given account's profile; the caller passes a catalog-validated color. */

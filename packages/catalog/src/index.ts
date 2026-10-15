@@ -4,7 +4,7 @@ import type { Circle, Rect, ShipHandling, Vec2 } from '@orbit/simulation';
  * Versioned game definitions. IDs are stable: never reuse an ID for a different
  * meaning; bump CATALOG_VERSION when definitions change.
  */
-export const CATALOG_VERSION = 1;
+export const CATALOG_VERSION = 2;
 
 export const ClassId = {
   Pilot: 'class.pilot',
@@ -42,7 +42,7 @@ export const CLASS_DESCRIPTIONS: Readonly<Record<ClassId, ClassDescription>> = {
     availableIn: '0.6',
   },
   [ClassId.Officer]: {
-    role: 'Usa armas longas e dá bônus às armas da nave; protege a carga contra piratas.',
+    role: 'Tem mais vida e stamina, recarrega e causa mais dano com armas pessoais, usa armas longas e melhora a arma da nave sob seu comando (mais dano, menos calor).',
     availableIn: '0.6 e 0.7',
   },
 };

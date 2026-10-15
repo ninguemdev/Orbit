@@ -111,25 +111,22 @@ export class PartyConnection {
 }
 
 function toView(state: PartyStateView): PartyView {
-  const members: (PartyMember & { joinedAt: number })[] = [];
+  const members: { member: PartyMember; joinedAt: number }[] = [];
   state.members?.forEach((member, accountId) => {
     members.push({
-      accountId,
-      nick: member.nick,
-      connected: member.connected,
+      member: {
+        accountId,
+        nick: member.nick,
+        connected: member.connected,
+        classId: member.classId,
+      },
       joinedAt: member.joinedAt,
-      classId: member.classId ?? '',
     });
   });
   members.sort((a, b) => a.joinedAt - b.joinedAt);
   return {
     leaderId: state.leaderId ?? '',
     inviteCode: state.inviteCode ?? '',
-    members: members.map(({ accountId, nick, connected, classId }) => ({
-      accountId,
-      nick,
-      connected,
-      classId,
-    })),
+    members: members.map((entry) => entry.member),
   };
 }

@@ -209,6 +209,31 @@ describe('parties', () => {
     expect(classOf(party, leader.id)).toBe('class.pilot');
   });
 
+  it('keeps the chosen class across parties and in the account profile', async () => {
+    const [leader, guest] = [await account(), await account()];
+    const party = await createParty(leader);
+    const guestSolo = await createParty(guest);
+    guestSolo.send(PartyClientMessage.SelectClass, { classId: 'class.engineer' });
+    await waitFor(() => {
+      let chosen = '';
+      guestSolo.state.members.forEach((member) => (chosen = member.classId));
+      return chosen === 'class.engineer';
+    }, 'classe na party solo');
+    await sleep(100); // the profile write is asynchronous
+
+    await joinByCode(guest, party.state.inviteCode);
+    await waitFor(() => {
+      let chosen = '';
+      party.state.members.forEach((member, id) => {
+        if (id === guest.id) chosen = member.classId;
+      });
+      return chosen === 'class.engineer';
+    }, 'classe levada para a nova party');
+    expect((await call(api.baseUrl, AccountRoute.Me, { token: guest.token })).body).toMatchObject({
+      profile: { classId: 'class.engineer' },
+    });
+  });
+
   it('refuses a fifth member', async () => {
     const accounts = await Promise.all(Array.from({ length: 5 }, account));
     const [leader, ...others] = accounts;

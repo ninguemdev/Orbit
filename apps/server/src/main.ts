@@ -1,4 +1,4 @@
-import { createDatabase, createPool } from '@orbit/database';
+import { createDatabase, createPool, updateProfileClass } from '@orbit/database';
 import { createGameServer } from './app';
 import { readServerConfig } from './config';
 import { DEFAULT_IDENTITY_POLICY, IdentityService } from './modules/identity/identity-service';
@@ -11,8 +11,9 @@ configureProcessCors({
   allowMissingOrigin: config.allowMissingOrigin,
 });
 const pool = createPool({ connectionString: config.databaseUrl, max: 10 });
+const db = createDatabase(pool);
 const identity = new IdentityService({
-  db: createDatabase(pool),
+  db,
   hasher: createArgon2Hasher({ maxConcurrent: 2, maxQueue: 64 }),
   policy: {
     ...DEFAULT_IDENTITY_POLICY,
@@ -21,7 +22,10 @@ const identity = new IdentityService({
       config.loginAttemptsPerAddress ?? DEFAULT_IDENTITY_POLICY.loginAttemptsPerAddress,
   },
 });
-const server = createGameServer(config, { identity });
+const server = createGameServer(config, {
+  identity,
+  classPreferences: { save: (accountId, classId) => updateProfileClass(db, accountId, classId) },
+});
 server.onShutdown(() => pool.end());
 
 await server.listen(config.port, config.host);

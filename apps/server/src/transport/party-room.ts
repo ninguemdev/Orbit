@@ -19,9 +19,15 @@ import type { PartyDirectory, PartyRoomHandle } from '../modules/party/party-dir
 import type { RoomTicket, RoomTicketStore } from '../modules/party/room-tickets';
 import { PartyMemberState, PartyState } from './party-schema';
 
+/** Remembers each account's class choice beyond the party (the profile in the database). */
+export interface ClassPreferences {
+  save(accountId: string, classId: string): Promise<void>;
+}
+
 export interface PartyRoomDeps {
   readonly tickets: RoomTicketStore;
   readonly directory: PartyDirectory;
+  readonly classPreferences?: ClassPreferences;
   readonly now?: () => number;
 }
 
@@ -90,11 +96,19 @@ export class PartyRoom
       const action = PartyClientMessage.SelectClass;
       const parsed = partySelectClassSchema.safeParse(raw);
       if (!parsed.success) return this.#refuse(client, action, PartyErrorCode.InvalidPayload);
-      if (!isClassId(parsed.data.classId))
-        return this.#refuse(client, action, PartyErrorCode.UnknownClass);
+      const { classId } = parsed.data;
+      if (!isClassId(classId)) return this.#refuse(client, action, PartyErrorCode.UnknownClass);
+      const accountId = client.auth?.accountId;
+      const member = accountId ? this.state.members.get(accountId) : undefined;
+      if (!accountId || !member || this.#clients.get(accountId) !== client) {
+        return this.#refuse(client, action, PartyErrorCode.NotMember);
+      }
       // Each member chooses their own class; repeated classes are allowed.
-      const member = client.auth ? this.state.members.get(client.auth.accountId) : undefined;
-      if (member) member.classId = parsed.data.classId;
+      member.classId = classId;
+      this.#deps.classPreferences?.save(accountId, classId).catch((error: unknown) => {
+        const name = error instanceof Error ? error.name : typeof error;
+        console.error(`[party] não foi possível salvar a classe: ${name}`);
+      });
     });
     this.onMessage('*', (client: PartyClient, type) => {
       this.#refuse(client, String(type), PartyErrorCode.InvalidPayload);
@@ -122,6 +136,7 @@ export class PartyRoom
     member.nick = nick;
     member.connected = true;
     member.joinedAt = this.#now();
+    member.classId = isClassId(ticket.classId) ? ticket.classId : '';
     this.state.members.set(accountId, member);
     if (!this.state.leaderId) this.state.leaderId = accountId;
     this.#clients.set(accountId, client);
