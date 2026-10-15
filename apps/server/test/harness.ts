@@ -16,6 +16,7 @@ export async function startTestServer(): Promise<TestServer> {
     port: 0,
     allowedOrigins: new Set(['http://localhost:5173']),
     allowMissingOrigin: true,
+    cookieSecure: false,
   });
   await server.listen(0, '127.0.0.1');
   const address = server.transport.server?.address() as AddressInfo;

@@ -1,0 +1,104 @@
+import type { AddressInfo } from 'node:net';
+import type { Server } from '@colyseus/core';
+import { SESSION_COOKIE } from '@orbit/contracts';
+import {
+  type Database,
+  createDatabase,
+  createPool,
+  createThrowawayDatabase,
+  readDatabaseUrl,
+  runMigrations,
+} from '@orbit/database';
+import type pg from 'pg';
+import { createGameServer } from '../src/app';
+import { type IdentityPolicy, IdentityService } from '../src/modules/identity/identity-service';
+import { type PasswordHasher, createArgon2Hasher } from '../src/modules/identity/password-hasher';
+
+export const ALLOWED_ORIGIN = 'http://localhost:5173';
+
+export interface ApiServer {
+  readonly baseUrl: string;
+  readonly pool: pg.Pool;
+  readonly db: Database;
+  readonly hasher: PasswordHasher;
+  close(): Promise<void>;
+}
+
+/** Real server + real Argon2id + throwaway PostgreSQL database. */
+export async function startApiServer(policy: IdentityPolicy): Promise<ApiServer> {
+  const throwaway = await createThrowawayDatabase(readDatabaseUrl(), 'orbit_api_test');
+  const pool = createPool({ connectionString: throwaway.url, max: 8 });
+  let server: Server | undefined;
+  const close = async () => {
+    try {
+      await server?.gracefullyShutdown(false);
+      await pool.end();
+    } finally {
+      await throwaway.drop();
+    }
+  };
+  try {
+    await runMigrations(pool);
+    const db = createDatabase(pool);
+    const hasher = createArgon2Hasher({ maxConcurrent: 2, maxQueue: 64 });
+    server = createGameServer(
+      {
+        host: '127.0.0.1',
+        port: 0,
+        allowedOrigins: new Set([ALLOWED_ORIGIN]),
+        allowMissingOrigin: true,
+        cookieSecure: false,
+      },
+      { identity: new IdentityService({ db, hasher, policy }) },
+    );
+    await server.listen(0, '127.0.0.1');
+    const address = server.transport.server?.address() as AddressInfo;
+    return { baseUrl: `http://127.0.0.1:${address.port}`, pool, db, hasher, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
+
+export interface ApiResponse {
+  readonly status: number;
+  readonly body: unknown;
+  readonly headers: Headers;
+  /** Session token from Set-Cookie, `''` when the cookie was cleared, undefined if absent. */
+  readonly token: string | undefined;
+}
+
+export interface ApiRequest {
+  readonly method?: string;
+  readonly body?: unknown;
+  readonly token?: string;
+  readonly origin?: string;
+  readonly contentType?: string;
+  readonly rawBody?: string;
+}
+
+export async function call(
+  base: string,
+  path: string,
+  request: ApiRequest = {},
+): Promise<ApiResponse> {
+  const headers: Record<string, string> = {};
+  if (request.token !== undefined) headers['cookie'] = `${SESSION_COOKIE}=${request.token}`;
+  if (request.origin) headers['origin'] = request.origin;
+  const hasBody = request.body !== undefined || request.rawBody !== undefined;
+  if (hasBody) headers['content-type'] = request.contentType ?? 'application/json';
+  const response = await fetch(base + path, {
+    method: request.method ?? 'GET',
+    headers,
+    ...(hasBody ? { body: request.rawBody ?? JSON.stringify(request.body) } : {}),
+  });
+  const text = await response.text();
+  const setCookie = response.headers.get('set-cookie');
+  const match = setCookie ? new RegExp(`${SESSION_COOKIE}=([^;]*)`).exec(setCookie) : null;
+  return {
+    status: response.status,
+    body: text ? (JSON.parse(text) as unknown) : null,
+    headers: response.headers,
+    token: match ? match[1] : undefined,
+  };
+}

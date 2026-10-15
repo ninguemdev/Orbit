@@ -9,7 +9,7 @@ try {
 
 export default defineConfig({
   test: {
-    include: ['packages/database/test/**/*.test.ts'],
+    include: ['packages/database/test/**/*.test.ts', 'apps/server/test-db/**/*.test.ts'],
     fileParallelism: false,
     testTimeout: 20_000,
     hookTimeout: 30_000,
