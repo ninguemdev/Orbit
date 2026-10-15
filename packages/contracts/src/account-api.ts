@@ -30,6 +30,7 @@ export const AccountErrorCode = {
   InvalidInviteCode: 'invalid_invite_code',
   InviteNotFound: 'invite_not_found',
   PartyFull: 'party_full',
+  RemovedFromParty: 'removed_from_party',
 } as const;
 export type AccountErrorCode = (typeof AccountErrorCode)[keyof typeof AccountErrorCode];
 

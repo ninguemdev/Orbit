@@ -5,13 +5,6 @@ import { DEFAULT_IDENTITY_POLICY, IdentityService } from './modules/identity/ide
 import { createArgon2Hasher } from './modules/identity/password-hasher';
 import { configureProcessCors } from './transport/http/cors-policy';
 
-// Colyseus shuts the whole process down on an uncaught error. A stray rejection in
-// one room must not end every match; record it instead (name and message only).
-process.on('unhandledRejection', (reason) => {
-  const name = reason instanceof Error ? `${reason.name}: ${reason.message}` : typeof reason;
-  console.error(`[orbit] rejeição não tratada: ${name}`);
-});
-
 const config = readServerConfig();
 configureProcessCors({
   allowedOrigins: config.allowedOrigins,

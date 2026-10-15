@@ -68,6 +68,8 @@ export interface PartyInviteNotice {
 
 /** Close code sent to a member removed by the leader. */
 export const PARTY_KICKED_CLOSE_CODE = 4401;
+/** Close code sent when the same account entered a party elsewhere (e.g. another tab). */
+export const PARTY_MOVED_CLOSE_CODE = 4402;
 
 export interface PartyMemberView {
   readonly accountId: string;

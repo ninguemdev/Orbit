@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto';
 
 export type TicketIntent =
-  { readonly kind: 'create' } | { readonly kind: 'join'; readonly roomId: string };
+  | { readonly kind: 'create' }
+  /** `invited`: admitted by an invite rather than the shared code. */
+  | { readonly kind: 'join'; readonly roomId: string; readonly invited: boolean };
 
 export interface TicketHolder {
   readonly accountId: string;

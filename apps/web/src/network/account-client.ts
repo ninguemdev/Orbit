@@ -93,5 +93,7 @@ export function describeAccountError(code: ClientErrorCode): string {
       return 'Esse convite expirou ou já foi usado.';
     case 'party_full':
       return 'A party já está completa.';
+    case 'removed_from_party':
+      return 'O líder removeu você desta party. Para voltar, peça um novo convite.';
   }
 }

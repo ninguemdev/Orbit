@@ -66,6 +66,10 @@ export function PartyPanel({ party, myAccountId }: PartyPanelProps) {
             </button>
           ) : null}
         </>
+      ) : party.movedElsewhere ? (
+        <button type="button" disabled={party.busy} onClick={() => void party.reclaim()}>
+          Usar a party nesta janela
+        </button>
       ) : (
         <p>Conectando à party…</p>
       )}

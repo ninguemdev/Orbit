@@ -1,5 +1,6 @@
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { PARTY_INVITE_TTL_SECONDS, type PartyInviteNotice, normalizeNick } from '@orbit/contracts';
+import { normalizeCrockford, randomCrockford } from '../../infrastructure/crockford';
 
 /** What the directory needs from a live party room. */
 export interface PartyRoomHandle {
@@ -7,6 +8,8 @@ export interface PartyRoomHandle {
   readonly inviteCode: string;
   memberCount(): number;
   hasMember(accountId: string): boolean;
+  /** Accounts the leader removed may only come back through a new invite. */
+  refusesAccount(accountId: string): boolean;
   /** Shows an invite to a member of this room; false if they are not connected here. */
   notifyInvite(accountId: string, notice: PartyInviteNotice): boolean;
   /** Removes a member who has just joined another party. */
@@ -21,13 +24,7 @@ export interface PartyInvite {
   readonly expiresAt: number;
 }
 
-const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_LENGTH = 6;
-
-/** Normalizes a typed invite code like recovery codes (case, separators, O/I/L). */
-export function normalizeInviteCode(code: string): string {
-  return code.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
-}
 
 /**
  * In-memory index of live parties for one game process: invite codes, which party
@@ -48,8 +45,7 @@ export class PartyDirectory {
 
   newInviteCode(): string {
     for (;;) {
-      let code = '';
-      for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+      const code = randomCrockford(CODE_LENGTH);
       if (!this.#roomByCode.has(code)) return code;
     }
   }
@@ -72,7 +68,7 @@ export class PartyDirectory {
   }
 
   findByInviteCode(code: string): PartyRoomHandle | null {
-    const roomId = this.#roomByCode.get(normalizeInviteCode(code));
+    const roomId = this.#roomByCode.get(normalizeCrockford(code));
     return roomId ? this.room(roomId) : null;
   }
 
@@ -114,12 +110,16 @@ export class PartyDirectory {
     return invite;
   }
 
-  /** Consumes an invite addressed to `accountId`; null if unknown, expired or not theirs. */
-  takeInvite(inviteId: string, accountId: string): PartyInvite | null {
+  /** A live invite addressed to `accountId`, without consuming it. */
+  findInvite(inviteId: string, accountId: string): PartyInvite | null {
     const invite = this.#invites.get(inviteId);
     if (!invite || invite.toAccountId !== accountId) return null;
-    this.#invites.delete(inviteId);
     return invite.expiresAt > this.#now() && this.#rooms.has(invite.roomId) ? invite : null;
+  }
+
+  /** Consumes an invite once the caller has been admitted. */
+  consumeInvite(inviteId: string): void {
+    this.#invites.delete(inviteId);
   }
 
   #purgeExpired(): void {

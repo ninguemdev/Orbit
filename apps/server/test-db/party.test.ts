@@ -225,6 +225,123 @@ describe('parties', () => {
     rooms = rooms.filter((room) => room !== party);
   });
 
+  it('keeps a removed member out of the invite code until invited again', async () => {
+    const [leader, griefer] = [await account(), await account()];
+    const party = await createParty(leader);
+    const grieferRoom = await joinByCode(griefer, party.state.inviteCode);
+    await waitFor(() => party.state.members.size === 2, 'dois membros');
+    const kicked = new Promise<number>((resolve) => grieferRoom.onLeave((code) => resolve(code)));
+    party.send(PartyClientMessage.Kick, { accountId: griefer.id });
+    expect(await kicked).toBe(PARTY_KICKED_CLOSE_CODE);
+    rooms = rooms.filter((room) => room !== grieferRoom);
+
+    expect(
+      await ticket(griefer, { intent: 'join', inviteCode: party.state.inviteCode }),
+    ).toMatchObject({
+      status: 403,
+      body: { error: 'removed_from_party' },
+    });
+
+    const solo = await createParty(griefer);
+    const received: PartyInviteNotice[] = [];
+    solo.onMessage(PartyServerMessage.InviteReceived, (notice: PartyInviteNotice) =>
+      received.push(notice),
+    );
+    party.send(PartyClientMessage.Invite, { nick: griefer.nick });
+    await waitFor(() => received.length === 1, 'novo convite');
+    const accepted = (await ticket(griefer, { intent: 'accept', inviteId: received[0]?.inviteId }))
+      .body as PartyTicketResponse;
+    rooms.push(await sdk(accepted.ticket).joinById<PartyStateView>(accepted.roomId ?? ''));
+    await waitFor(() => party.state.members.size === 2, 'readmitido por convite');
+  });
+
+  it('removes a disconnected member at once and turns their reconnection away', async () => {
+    const [leader, member] = [await account(), await account()];
+    const party = await createParty(leader);
+    const memberRoom = await joinByCode(member, party.state.inviteCode);
+    await waitFor(() => party.state.members.size === 2, 'dois membros');
+    const token = memberRoom.reconnectionToken;
+    rooms = rooms.filter((room) => room !== memberRoom);
+    memberRoom.connection.close(1000); // drop without leaving: the seat stays reserved
+    let connected = true;
+    await waitFor(() => {
+      party.state.members.forEach((m, id) => {
+        if (id === member.id) connected = m.connected;
+      });
+      return !connected;
+    }, 'membro desconectado');
+
+    const refused = refusals(party);
+    party.send(PartyClientMessage.Invite, { nick: member.nick });
+    await waitFor(() => refused.length === 1, 'convite a desconectado');
+    expect(refused[0]?.code).toBe('already_member');
+
+    party.send(PartyClientMessage.Kick, { accountId: member.id });
+    await waitFor(() => party.state.members.size === 1, 'remoção imediata');
+
+    // Turned away either at matchmaking or right after the reconnection handshake.
+    const outcome = await sdk()
+      .reconnect<PartyStateView>(token)
+      .then(
+        (back) =>
+          new Promise<string>((resolve) => back.onLeave((code) => resolve(`closed:${code}`))),
+        () => 'denied',
+      );
+    expect(['denied', `closed:${PARTY_KICKED_CLOSE_CODE}`]).toContain(outcome);
+    expect(party.state.members.size).toBe(1);
+  });
+
+  it('reports a dropped invitee as offline', async () => {
+    const [leader, target] = [await account(), await account()];
+    const party = await createParty(leader);
+    const targetSolo = await createParty(target);
+    rooms = rooms.filter((room) => room !== targetSolo);
+    targetSolo.connection.close(1000);
+    await sleep(300);
+    const refused = refusals(party);
+    party.send(PartyClientMessage.Invite, { nick: target.nick });
+    await waitFor(() => refused.length === 1, 'recusa');
+    expect(refused[0]?.code).toBe('player_offline');
+  });
+
+  it('keeps an invite usable when the party was full at the moment of accepting', async () => {
+    const accounts = await Promise.all(Array.from({ length: 5 }, account));
+    const [leader, guestA, guestB, guestC, invitee] = accounts;
+    if (!leader || !guestA || !guestB || !guestC || !invitee) throw new Error('contas');
+    const party = await createParty(leader);
+    const inviteeSolo = await createParty(invitee);
+    const received: PartyInviteNotice[] = [];
+    inviteeSolo.onMessage(PartyServerMessage.InviteReceived, (notice: PartyInviteNotice) =>
+      received.push(notice),
+    );
+    party.send(PartyClientMessage.Invite, { nick: invitee.nick });
+    await waitFor(() => received.length === 1, 'convite');
+    const inviteId = received[0]?.inviteId;
+
+    await joinByCode(guestA, party.state.inviteCode);
+    await joinByCode(guestB, party.state.inviteCode);
+    const lastRoom = await joinByCode(guestC, party.state.inviteCode);
+    await waitFor(() => party.state.members.size === 4, 'party cheia');
+    expect(await ticket(invitee, { intent: 'accept', inviteId })).toMatchObject({
+      status: 409,
+      body: { error: 'party_full' },
+    });
+
+    await lastRoom.leave();
+    rooms = rooms.filter((room) => room !== lastRoom);
+    await waitFor(() => party.state.members.size === 3, 'vaga aberta');
+    expect((await ticket(invitee, { intent: 'accept', inviteId })).status).toBe(201);
+  });
+
+  it('limits ticket requests per account', async () => {
+    const spammer = await account();
+    const statuses: number[] = [];
+    for (let i = 0; i < 31; i++)
+      statuses.push((await ticket(spammer, { intent: 'create' })).status);
+    expect(statuses.slice(0, 30).every((status) => status === 201)).toBe(true);
+    expect(statuses[30]).toBe(429);
+  });
+
   it('invites an online player by nick, who moves from their own party', async () => {
     const [leader, friend, stranger] = [await account(), await account(), await account()];
     const party = await createParty(leader);

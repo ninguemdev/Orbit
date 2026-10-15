@@ -54,15 +54,16 @@ const sessionId = (page: Page) => page.evaluate(() => window.__orbit?.sessionId 
 async function shipsAtSameTicks(a: Page, b: Page) {
   const seenA = new Map<number, WorldView['ship']>();
   const seenB = new Map<number, WorldView['ship']>();
-  for (let i = 0; i < 100; i++) {
+  const shared = () => [...seenA.keys()].filter((tick) => seenB.has(tick));
+  // Sample until enough ticks were seen by both pages; slow runners sample sparsely.
+  const deadline = Date.now() + 15_000;
+  while (shared().length < 6 && Date.now() < deadline) {
     const [wa, wb] = await Promise.all([world(a), world(b)]);
     seenA.set(wa.tick, wa.ship);
     seenB.set(wb.tick, wb.ship);
-    await a.waitForTimeout(10);
+    await a.waitForTimeout(5);
   }
-  return [...seenA.keys()]
-    .filter((tick) => seenB.has(tick))
-    .map((tick) => ({ tick, a: seenA.get(tick), b: seenB.get(tick) }));
+  return shared().map((tick) => ({ tick, a: seenA.get(tick), b: seenB.get(tick) }));
 }
 
 async function hold(page: Page, key: string, ms: number) {

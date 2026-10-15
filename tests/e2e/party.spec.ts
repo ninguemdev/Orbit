@@ -75,3 +75,24 @@ test('forms a party by code and by invite, and hands over leadership', async ({ 
     await expect(bravo.page.getByRole('heading', { name: /Sua party \(1\/4\)/ })).toBeVisible();
   });
 });
+
+test('a second window of the same account takes over the party without a loop', async ({
+  browser,
+}) => {
+  const first = await signUpInNewContext(browser, 'Abas');
+  await expect(first.page.getByTestId('party-code')).toBeVisible();
+  const second = await first.page.context().newPage();
+  await second.goto('/');
+  await expect(second.getByTestId('party-code')).toBeVisible();
+
+  const moved = 'Sua conta entrou em uma party em outra janela.';
+  await expect(first.page.getByTestId('party-notice')).toHaveText(moved);
+  // Stays out (no ping-pong between windows) until the player chooses this window.
+  await first.page.waitForTimeout(3000);
+  await expect(first.page.getByRole('button', { name: 'Usar a party nesta janela' })).toBeVisible();
+  await expect(second.getByTestId('party-code')).toBeVisible();
+
+  await first.page.getByRole('button', { name: 'Usar a party nesta janela' }).click();
+  await expect(first.page.getByTestId('party-code')).toBeVisible();
+  await expect(second.getByTestId('party-notice')).toHaveText(moved);
+});

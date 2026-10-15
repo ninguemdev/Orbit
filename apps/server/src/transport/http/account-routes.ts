@@ -35,6 +35,7 @@ const STATUS: Record<string, number> = {
   [AccountErrorCode.InvalidCredentials]: 401,
   [AccountErrorCode.InvalidRecovery]: 401,
   [AccountErrorCode.OriginNotAllowed]: 403,
+  [AccountErrorCode.RemovedFromParty]: 403,
   [AccountErrorCode.InvalidInviteCode]: 404,
   [AccountErrorCode.InviteNotFound]: 404,
   [AccountErrorCode.NickTaken]: 409,

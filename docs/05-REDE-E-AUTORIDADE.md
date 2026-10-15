@@ -89,9 +89,11 @@ Verificado com Colyseus 0.18 (core 0.18.18, schema 5.0.39, SDK 0.18.5) em testes
 
 - **Sala `party` por party:** até 4 membros, privada (não listada), com estado de líder, código de convite e membros. Todo jogador conectado está em exatamente uma party, solo por padrão. Entrar em outra remove o jogador da anterior, no servidor.
 - **Entrada:** só com ticket de uso único (30 s), emitido por `POST /api/party/tickets` para a sessão do cookie. O ticket diz quem é a conta e onde ela pode entrar: party nova, party do código ou party de um convite endereçado a ela. O ticket vai como token da matchmaking (`Authorization`) e é consumido no `onAuth`. Código de convite: 6 caracteres Crockford base32, com tentativas limitadas por endereço.
-- **Líder:** convida por nick de jogador online (online = em alguma party), expulsa (código 4401) e passa a liderança. Quando o líder sai, o membro conectado mais antigo assume. Queda reserva o lugar por 30 s; expulso ou movido não recebe reconexão.
+- **Líder:** convida por nick de jogador online (online = conectado a alguma party), expulsa (código 4401) e passa a liderança. Quando o líder sai, o membro conectado mais antigo assume. Queda reserva o lugar por 30 s. Quem foi expulso ou entrou em outra party sai da lista na hora, mesmo desconectado, e a reconexão é recusada. Quem foi expulso não volta pelo código, só por novo convite.
+- **Mesma conta em duas janelas:** a janela mais recente assume a party; a anterior recebe 4402 e espera o jogador escolher, sem disputar a party.
+- **Tickets:** até 30 pedidos por minuto por conta, além do limite de códigos por endereço. Aceitar um convite numa party cheia não consome o convite.
 - **Estado:** em memória do processo de jogo (D26); reiniciar desfaz as parties.
-- **Robustez:** `allowReconnection` rejeita quando o cliente cai antes de concluir a entrada. Sem tratamento, o Colyseus encerrava o processo. As salas tratam a rejeição, e o processo registra rejeições soltas sem cair.
+- **Robustez:** `allowReconnection` rejeita quando o cliente cai antes de concluir a entrada. Sem tratamento, o Colyseus encerrava o processo; as salas tratam a rejeição.
 
 ## Entrada, previsão e reconciliação
 

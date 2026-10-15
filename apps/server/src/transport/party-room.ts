@@ -3,6 +3,7 @@ import {
   PARTY_INVITE_TTL_SECONDS,
   PARTY_KICKED_CLOSE_CODE,
   PARTY_MAX_MEMBERS,
+  PARTY_MOVED_CLOSE_CODE,
   PARTY_RECONNECTION_SECONDS,
   PartyClientMessage,
   PartyErrorCode,
@@ -24,9 +25,6 @@ export interface PartyRoomDeps {
 
 type PartyClient = Client<{ auth: RoomTicket }>;
 
-/** Close code for a member who moved to another party (no reconnection offered). */
-const MOVED_CLOSE_CODE = 4402;
-
 /**
  * A party: up to four accounts preparing together. Entry requires a single-use
  * ticket issued to an authenticated session; the leader manages members.
@@ -45,6 +43,8 @@ export class PartyRoom
   readonly #clients = new Map<string, PartyClient>();
   /** Members removed on purpose (kicked or moved): their drop gets no reconnection. */
   readonly #removed = new Set<string>();
+  /** Removed by the leader: the invite code no longer admits them, a new invite does. */
+  readonly #kicked = new Set<string>();
 
   /** Refuses everyone unless registered through `definePartyRoom`. */
   static override async onAuth(
@@ -100,6 +100,10 @@ export class PartyRoom
       throw new ServerError(403, 'invalid_ticket');
     }
     if (this.state.members.has(accountId)) throw new ServerError(409, PartyErrorCode.AlreadyMember);
+    if (this.#kicked.has(accountId) && intent.kind === 'join' && !intent.invited) {
+      throw new ServerError(403, 'removed_from_party');
+    }
+    this.#kicked.delete(accountId);
 
     const member = new PartyMemberState();
     member.accountId = accountId;
@@ -129,10 +133,15 @@ export class PartyRoom
   override onReconnect(client: PartyClient): void {
     const accountId = client.auth?.accountId;
     const member = accountId ? this.state.members.get(accountId) : undefined;
-    if (accountId && member) {
-      member.connected = true;
-      this.#clients.set(accountId, client);
+    if (!accountId || !member) {
+      // Removed while disconnected (kicked, or joined another party): the seat was
+      // still reserved, but the member is gone.
+      const kicked = accountId !== undefined && this.#kicked.has(accountId);
+      client.leave(kicked ? PARTY_KICKED_CLOSE_CODE : PARTY_MOVED_CLOSE_CODE);
+      return;
     }
+    member.connected = true;
+    this.#clients.set(accountId, client);
   }
 
   override onLeave(client: PartyClient): void {
@@ -158,18 +167,20 @@ export class PartyRoom
     return this.state.members.has(accountId);
   }
 
+  refusesAccount(accountId: string): boolean {
+    return this.#kicked.has(accountId);
+  }
+
   notifyInvite(accountId: string, notice: PartyInviteNotice): boolean {
     const client = this.#clients.get(accountId);
-    if (!client) return false;
+    // A member in the reconnection window cannot see it now.
+    if (!client || !this.state.members.get(accountId)?.connected) return false;
     client.send(PartyServerMessage.InviteReceived, notice);
     return true;
   }
 
   evict(accountId: string): void {
-    this.#removed.add(accountId);
-    const client = this.#clients.get(accountId);
-    if (client) client.leave(MOVED_CLOSE_CODE, 'moved_to_another_party');
-    else this.#removeMember(accountId);
+    this.#removeOnPurpose(accountId, PARTY_MOVED_CLOSE_CODE, 'moved_to_another_party');
   }
 
   // Rules ------------------------------------------------------------------------
@@ -185,6 +196,8 @@ export class PartyRoom
     if (this.state.members.has(target.accountId)) {
       return this.#refuse(client, action, PartyErrorCode.AlreadyMember);
     }
+    // A new invite is the way back for a removed member.
+    this.#kicked.delete(target.accountId);
     const invite = this.#deps.directory.createInvite(
       this.roomId,
       target.accountId,
@@ -205,10 +218,24 @@ export class PartyRoom
     if (targetId === client.auth?.accountId || !this.state.members.has(targetId)) {
       return this.#refuse(client, action, PartyErrorCode.NotMember);
     }
-    this.#removed.add(targetId);
-    const target = this.#clients.get(targetId);
-    if (target) target.leave(PARTY_KICKED_CLOSE_CODE, 'kicked_by_leader');
-    else this.#removeMember(targetId); // Disconnected: free the seat now.
+    this.#kicked.add(targetId);
+    this.#removeOnPurpose(targetId, PARTY_KICKED_CLOSE_CODE, 'kicked_by_leader');
+  }
+
+  /**
+   * Removes a member now. A connected one is disconnected with `code`; a dropped one
+   * is taken off the list at once (closing their dead socket would do nothing), and a
+   * later reconnection is turned away in onReconnect.
+   */
+  #removeOnPurpose(accountId: string, code: number, reason: string): void {
+    this.#removed.add(accountId);
+    const member = this.state.members.get(accountId);
+    const client = this.#clients.get(accountId);
+    if (client && member?.connected) {
+      client.leave(code, reason);
+      return;
+    }
+    this.#removeMember(accountId);
   }
 
   #promote(client: PartyClient, targetId: string): void {
