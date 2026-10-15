@@ -1,4 +1,5 @@
 import { type Browser, type Page, expect, test } from '@playwright/test';
+import { dot, rotate, sub } from '../../packages/simulation/src/vec2';
 import { signUpInNewContext } from './support/accounts';
 
 interface CrewView {
@@ -198,25 +199,24 @@ test('two browsers share the room, walk, and see the same ship being piloted', a
     });
     await expect(bravo.getByTestId('hud')).not.toContainText('reconectando', { timeout: 10_000 });
     expect(await sessionId(alfa)).toBe(alfaId);
-    // Keys move the crew relative to the screen and the ship may have turned while
-    // piloted, so press the key that points into the ship (local -x, away from the
-    // console the crew member stands at).
+    // Keys move the crew relative to the screen: the client turns them into the ship's
+    // frame with rotate(axes, -angle), and the ship may have turned while piloted. Press
+    // the key pointing most into the ship (local -x, away from the console) and require
+    // movement along that key's direction in the ship's frame.
+    await alfa.locator('canvas').click({ position: { x: 20, y: 650 } }); // keyboard focus
+    // Measured once both views settled: the last update may still be arriving.
     const [settledBefore] = await settled(alfa, bravo);
-    const before = settledBefore.crew[alfaId];
+    const before = settledBefore.crew[alfaId] ?? { x: 0, y: 0 };
     const { angle } = settledBefore.ship;
-    const inward = { x: -Math.cos(angle), y: -Math.sin(angle) }; // local -x on screen
-    const keys = [
-      { key: 'KeyA', x: -1, y: 0 },
-      { key: 'KeyD', x: 1, y: 0 },
-      { key: 'KeyW', x: 0, y: -1 },
-      { key: 'KeyS', x: 0, y: 1 },
-    ];
-    const best = keys.reduce((a, b) =>
-      a.x * inward.x + a.y * inward.y >= b.x * inward.x + b.y * inward.y ? a : b,
-    );
-    await hold(alfa, best.key, 500);
+    const inward = rotate({ x: -1, y: 0 }, angle); // local -x as seen on screen
+    const key =
+      Math.abs(inward.x) >= Math.abs(inward.y)
+        ? { code: inward.x < 0 ? 'KeyA' : 'KeyD', x: Math.sign(inward.x), y: 0 }
+        : { code: inward.y < 0 ? 'KeyW' : 'KeyS', x: 0, y: Math.sign(inward.y) };
+    await hold(alfa, key.code, 500);
     const [a, b] = await settled(alfa, bravo);
-    expect(a.crew[alfaId]?.x).toBeLessThan((before?.x ?? -Infinity) - 10);
+    const moved = sub(a.crew[alfaId] ?? before, before);
+    expect(dot(moved, rotate(key, -angle))).toBeGreaterThan(10);
     expect(b.crew[alfaId]).toEqual(a.crew[alfaId]);
   });
 });
