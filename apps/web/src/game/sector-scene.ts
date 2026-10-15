@@ -30,7 +30,7 @@ export class SectorScene extends Phaser.Scene {
   #helmConsole!: Phaser.GameObjects.Rectangle;
   #stars!: Phaser.GameObjects.TileSprite;
   #fpsText!: Phaser.GameObjects.Text;
-  #fpsWindowStart = 0;
+  #fpsWindowStart: number | null = null;
   #framesInWindow = 0;
   #controls!: KeyboardControls;
   readonly #crew = new Map<string, CrewView>();
@@ -97,6 +97,7 @@ export class SectorScene extends Phaser.Scene {
     // Counts frames actually rendered; Phaser's actualFps also counts frames skipped
     // by the economy-mode limiter.
     this.#framesInWindow++;
+    this.#fpsWindowStart ??= time;
     const elapsed = time - this.#fpsWindowStart;
     if (elapsed >= FPS_WINDOW_MS) {
       this.#fpsText.setText(`${Math.round((this.#framesInWindow * 1000) / elapsed)} FPS`);

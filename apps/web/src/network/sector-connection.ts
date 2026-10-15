@@ -79,9 +79,16 @@ export class SectorConnection implements SectorBridge {
   private constructor(room: Room<unknown, SectorStateView>) {
     this.#room = room;
     room.onStateChange((state) => this.#record(state));
-    room.onDrop(() => this.#setStatus('reconnecting'));
+    room.onDrop(() => {
+      // The server releases the helm and clears inputs on a drop; wait for fresh state.
+      this.#snapshots.clear();
+      this.#setStatus('reconnecting');
+    });
     room.onReconnect(() => this.#setStatus('connected'));
-    room.onLeave(() => this.#setStatus('disconnected'));
+    room.onLeave(() => {
+      this.#stopTimers();
+      this.#setStatus('disconnected');
+    });
     room.onMessage(ServerMessage.ActionRejected, (payload: ActionRejectedPayload) => {
       this.#lastNotice = { code: payload.code, at: performance.now() };
     });
@@ -157,8 +164,12 @@ export class SectorConnection implements SectorBridge {
   }
 
   async leave(): Promise<void> {
-    for (const timer of this.#timers) clearInterval(timer);
+    this.#stopTimers();
     await this.#room.leave(true);
+  }
+
+  #stopTimers(): void {
+    for (const timer of this.#timers) clearInterval(timer);
   }
 
   /**

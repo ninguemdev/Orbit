@@ -49,6 +49,7 @@ export class DevSectorRoom extends Room<{
   protected now: () => number = () => performance.now();
   readonly #violations = new Map<string, ViolationBudget>();
   readonly #abusive = new Set<string>();
+  #joinCount = 0;
 
   /** Denies everyone unless registered through `defineDevSectorRoom` with a policy. */
   static override async onAuth(
@@ -108,8 +109,8 @@ export class DevSectorRoom extends Room<{
   }
 
   override onJoin(client: Client<{ auth: DevSectorAuth }>): void {
-    const index = this.simulation.crew.size + 1;
-    const name = client.auth?.options.name ?? `Tripulante_${index}`;
+    this.#joinCount++;
+    const name = client.auth?.options.name ?? `Tripulante_${this.#joinCount}`;
     const member = this.simulation.addCrew(client.sessionId, name);
     const view = new CrewMemberState();
     view.id = member.id;

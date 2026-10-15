@@ -16,6 +16,14 @@ describe('catalog consistency', () => {
     });
   }
 
+  for (const hull of Object.values(SHIP_HULLS)) {
+    it(`${hull.id}: collision circle encloses the drawn hull`, () => {
+      for (const vertex of hull.outline) {
+        expect(Math.hypot(vertex.x, vertex.y)).toBeLessThanOrEqual(hull.handling.radius);
+      }
+    });
+  }
+
   for (const sector of Object.values(SECTORS)) {
     it(`${sector.id}: ship spawn is clear of obstacles`, () => {
       const radius = SHIP_HULLS['ship.scout'].handling.radius;

@@ -68,7 +68,7 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
       reverseAcceleration: 90,
       turnRate: 1.6,
       linearDamping: 0.25,
-      radius: 205,
+      radius: 216,
     },
     outline: [
       { x: 215, y: 0 },
