@@ -46,7 +46,6 @@ CREATE TABLE "ship_unlocks" (
 CREATE TABLE "wallets" (
 	"account_id" uuid PRIMARY KEY NOT NULL,
 	"credits" bigint DEFAULT 0 NOT NULL,
-	"version" integer DEFAULT 0 NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wallets_credits_not_negative" CHECK ("wallets"."credits" >= 0)
 );

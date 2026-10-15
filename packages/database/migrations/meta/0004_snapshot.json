@@ -1,5 +1,5 @@
 {
-  "id": "18c53eb9-d545-486b-a333-e0f7a4a98095",
+  "id": "eeb21883-aaf5-4b08-aa28-7304d0054152",
   "prevId": "4c295ad5-1a24-4cc6-abac-9e320f1a0746",
   "version": "7",
   "dialect": "postgresql",
@@ -823,13 +823,6 @@
         "credits": {
           "name": "credits",
           "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0

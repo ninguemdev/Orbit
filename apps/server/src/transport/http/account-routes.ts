@@ -206,6 +206,7 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
           parsed.data.fromSlot,
           parsed.data.toSlot,
         );
+        if (moved === 'no_account') return fail(response, AccountErrorCode.Unauthenticated);
         if (moved === 'empty_slot') return fail(response, AccountErrorCode.EmptySlot);
         if (moved === 'invalid_slot') return fail(response, AccountErrorCode.InvalidSlot);
         response.status(204).end();

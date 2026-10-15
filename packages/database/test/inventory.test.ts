@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_APPEARANCE_COLOR, ItemId, STARTER_PACKAGE, STASH_SLOTS } from '@orbit/catalog';
 import { postgresError } from '../src/client';
 import { createAccount } from '../src/identity/accounts';
-import { getInventory, grantItem, moveStashItem } from '../src/inventory/inventory';
+import {
+  MAX_GRANT_QUANTITY,
+  getInventory,
+  grantItem,
+  moveStashItem,
+} from '../src/inventory/inventory';
 import { FAKE_ARGON2ID_HASH, type TestDatabase, createTestDatabase } from './test-database';
 
 describe('inventory, wallet and ship licenses', () => {
@@ -51,14 +56,17 @@ describe('inventory, wallet and ship licenses', () => {
   it('stacks items up to the catalog limit, one stack per slot', async () => {
     const accountId = await newAccount();
     expect(await grant(accountId, ItemId.Scrap, 120)).toEqual({ toStash: 120, toInbox: 0 });
+    // Tops up the partial stack (20 + 40 = 50) before opening a new one (10).
+    expect(await grant(accountId, ItemId.Scrap, 40)).toEqual({ toStash: 40, toInbox: 0 });
     expect(await grant(accountId, ItemId.Pistol, 2)).toEqual({ toStash: 2, toInbox: 0 });
     const { stash } = await getInventory(t.db, accountId);
     expect(stash.map((entry) => [entry.slot, entry.itemId, entry.quantity])).toEqual([
       [0, ItemId.Scrap, 50],
       [1, ItemId.Scrap, 50],
-      [2, ItemId.Scrap, 20],
-      [3, ItemId.Pistol, 1],
+      [2, ItemId.Scrap, 50],
+      [3, ItemId.Scrap, 10],
       [4, ItemId.Pistol, 1],
+      [5, ItemId.Pistol, 1],
     ]);
   });
 
@@ -156,5 +164,50 @@ describe('inventory, wallet and ship licenses', () => {
     await expect(grant(accountId, 'item.weapon.laser', 1)).rejects.toThrow(RangeError);
     await expect(grant(accountId, ItemId.Scrap, 0)).rejects.toThrow(RangeError);
     await expect(grant(accountId, ItemId.Scrap, 1.5)).rejects.toThrow(RangeError);
+    await expect(grant(accountId, ItemId.Scrap, MAX_GRANT_QUANTITY + 1)).rejects.toThrow(
+      RangeError,
+    );
+  });
+
+  it('does not block logins (session inserts) while an inventory change holds the account', async () => {
+    const accountId = await newAccount();
+    const holder = await t.pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT 1 FROM accounts WHERE id = $1 FOR NO KEY UPDATE', [accountId]);
+      const login = await t.pool.connect();
+      try {
+        await login.query("SET statement_timeout = '1s'");
+        await expect(
+          login.query(
+            "INSERT INTO sessions (account_id, token_hash, expires_at) VALUES ($1, repeat('a', 64), now() + interval '1 day')",
+            [accountId],
+          ),
+        ).resolves.toBeTruthy();
+      } finally {
+        await login.query('RESET statement_timeout');
+        login.release();
+      }
+    } finally {
+      await holder.query('ROLLBACK');
+      holder.release();
+    }
+  });
+
+  it('keeps single units of a stackable item in one stack', async () => {
+    const accountId = await newAccount();
+    for (let i = 0; i < 45; i++) await grant(accountId, ItemId.Scrap, 1);
+    const { stash, inbox } = await getInventory(t.db, accountId);
+    expect(stash.map((entry) => entry.quantity)).toEqual([45]);
+    expect(inbox).toEqual([]);
+  });
+
+  it('treats dropping an item on its own slot as a no-op', async () => {
+    const accountId = await newAccount();
+    await grant(accountId, ItemId.Pistol, 1);
+    expect(await moveStashItem(t.db, accountId, 0, 0)).toBe('unchanged');
+    expect(await moveStashItem(t.db, '00000000-0000-0000-0000-000000000000', 0, 1)).toBe(
+      'no_account',
+    );
   });
 });

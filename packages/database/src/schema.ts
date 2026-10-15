@@ -121,7 +121,7 @@ export const profiles = pgTable(
   ],
 );
 
-/** Credits of an account. Integer, never negative; `version` supports optimistic checks. */
+/** Credits of an account. Integer, never negative. */
 export const wallets = pgTable(
   'wallets',
   {
@@ -129,7 +129,6 @@ export const wallets = pgTable(
       .primaryKey()
       .references(() => accounts.id, { onDelete: 'cascade' }),
     credits: bigint('credits', { mode: 'number' }).notNull().default(0),
-    version: integer('version').notNull().default(0),
     updatedAt: updatedAt(),
   },
   (table) => [check('wallets_credits_not_negative', sql`${table.credits} >= 0`)],
