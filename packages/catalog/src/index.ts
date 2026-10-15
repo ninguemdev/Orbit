@@ -35,6 +35,8 @@ export interface ConsoleDefinition {
   readonly seat: Vec2;
   /** Maximum distance from the seat to take the console. */
   readonly interactRadius: number;
+  /** Physical console; also listed in the hull's interior walls. */
+  readonly body: Rect;
 }
 
 export interface ShipHullDefinition {
@@ -54,6 +56,8 @@ export interface ShipHullDefinition {
 export const ShipHullId = { Scout: 'ship.scout' } as const;
 export type ShipHullId = (typeof ShipHullId)[keyof typeof ShipHullId];
 
+const SCOUT_HELM_BODY: Rect = { minX: 136, minY: -18, maxX: 148, maxY: 18 };
+
 export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
   [ShipHullId.Scout]: {
     id: ShipHullId.Scout,
@@ -64,29 +68,28 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
       reverseAcceleration: 90,
       turnRate: 1.6,
       linearDamping: 0.25,
-      radius: 190,
+      radius: 205,
     },
     outline: [
-      { x: 190, y: 0 },
-      { x: 120, y: -95 },
+      { x: 215, y: 0 },
+      { x: 152, y: -95 },
       { x: -170, y: -95 },
       { x: -190, y: -60 },
       { x: -190, y: 60 },
       { x: -170, y: 95 },
-      { x: 120, y: 95 },
+      { x: 152, y: 95 },
     ],
     interiorBounds: { minX: -150, minY: -80, maxX: 150, maxY: 80 },
     interiorWalls: [
       // Bridge partition with a central doorway.
       { minX: 70, minY: -80, maxX: 76, maxY: -24 },
       { minX: 70, minY: 24, maxX: 76, maxY: 80 },
-      // Helm console.
-      { minX: 136, minY: -18, maxX: 148, maxY: 18 },
+      SCOUT_HELM_BODY,
       // Cargo crates.
       { minX: -140, minY: -70, maxX: -108, maxY: -42 },
       { minX: -140, minY: 42, maxX: -108, maxY: 70 },
     ],
-    helm: { id: 'console.helm', seat: { x: 120, y: 0 }, interactRadius: 34 },
+    helm: { id: 'console.helm', seat: { x: 120, y: 0 }, interactRadius: 34, body: SCOUT_HELM_BODY },
     crewSpawns: [
       { x: -40, y: -30 },
       { x: -40, y: 30 },

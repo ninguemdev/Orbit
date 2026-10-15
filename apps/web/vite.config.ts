@@ -7,6 +7,7 @@ export default defineConfig({
   preview: { host: '127.0.0.1', port: 4173, strictPort: true },
   build: {
     target: 'es2023',
-    chunkSizeWarningLimit: 1600,
+    // Phaser is loaded lazily in its own chunk (~1.4 MB minified).
+    chunkSizeWarningLimit: 1500,
   },
 });
