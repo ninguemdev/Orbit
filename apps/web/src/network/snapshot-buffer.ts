@@ -23,6 +23,11 @@ export class SnapshotBuffer {
     if (this.#items.length > this.#capacity) this.#items.shift();
   }
 
+  /** The buffered snapshots, oldest first. */
+  recent(): readonly WorldSnapshot[] {
+    return [...this.#items];
+  }
+
   latest(): WorldSnapshot | null {
     return this.#items.at(-1) ?? null;
   }

@@ -18,7 +18,12 @@ interface WorldView {
 
 declare global {
   interface Window {
-    __orbit?: { sessionId: string; status: string; latest(): WorldView | null };
+    __orbit?: {
+      sessionId: string;
+      status: string;
+      latest(): WorldView | null;
+      shipHistory(): unknown;
+    };
   }
 }
 
@@ -50,20 +55,17 @@ const world = (page: Page) =>
 
 const sessionId = (page: Page) => page.evaluate(() => window.__orbit?.sessionId ?? '');
 
-/** Samples both pages until they report ship poses for the same server ticks. */
+type ShipAtTick = { tick: number; ship: WorldView['ship'] };
+
+/** Ship poses that both pages received for the same server ticks (recent history). */
 async function shipsAtSameTicks(a: Page, b: Page) {
-  const seenA = new Map<number, WorldView['ship']>();
-  const seenB = new Map<number, WorldView['ship']>();
-  const shared = () => [...seenA.keys()].filter((tick) => seenB.has(tick));
-  // Sample until enough ticks were seen by both pages; slow runners sample sparsely.
-  const deadline = Date.now() + 15_000;
-  while (shared().length < 6 && Date.now() < deadline) {
-    const [wa, wb] = await Promise.all([world(a), world(b)]);
-    seenA.set(wa.tick, wa.ship);
-    seenB.set(wb.tick, wb.ship);
-    await a.waitForTimeout(5);
-  }
-  return shared().map((tick) => ({ tick, a: seenA.get(tick), b: seenB.get(tick) }));
+  const history = (page: Page) =>
+    page.evaluate(() => (window.__orbit?.shipHistory() ?? []) as ShipAtTick[]);
+  const [historyA, historyB] = await Promise.all([history(a), history(b)]);
+  const byTickB = new Map(historyB.map((entry) => [entry.tick, entry.ship]));
+  return historyA
+    .filter((entry) => byTickB.has(entry.tick))
+    .map((entry) => ({ tick: entry.tick, a: entry.ship, b: byTickB.get(entry.tick) }));
 }
 
 async function hold(page: Page, key: string, ms: number) {
