@@ -41,6 +41,7 @@ const REFUSAL_TEXT: Record<string, string> = {
   invalid_payload: 'Pedido inválido.',
   unknown_class: 'Classe desconhecida.',
   ship_unavailable: 'Nenhum membro da party tem licença dessa nave.',
+  class_not_saved: 'Não foi possível salvar a classe. Tente de novo.',
 };
 
 type OpenOutcome = { ok: true } | { ok: false; code: ClientErrorCode | 'join_failed' | 'stale' };

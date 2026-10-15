@@ -1,5 +1,5 @@
 {
-  "id": "091fa3ce-af62-4d3d-9d60-d58bb282111a",
+  "id": "c528a21a-1f1e-4bcd-9f98-0dd53fc0224e",
   "prevId": "afab490f-437d-409c-8c38-da7a34a95697",
   "version": "7",
   "dialect": "postgresql",
@@ -658,7 +658,7 @@
       "checkConstraints": {
         "loadout_items_slot_known": {
           "name": "loadout_items_slot_known",
-          "value": "\"loadout_items\".\"slot\" IN ('primary', 'sidearm', 'tool') OR \"loadout_items\".\"slot\" ~ '^backpack\\.[0-7]$'"
+          "value": "\"loadout_items\".\"slot\" IN ('primary', 'sidearm', 'tool', 'backpack.0', 'backpack.1', 'backpack.2', 'backpack.3', 'backpack.4', 'backpack.5', 'backpack.6', 'backpack.7')"
         },
         "loadout_items_location_stash": {
           "name": "loadout_items_location_stash",

@@ -4,7 +4,7 @@ CREATE TABLE "loadout_items" (
 	"item_instance_id" uuid NOT NULL,
 	"location" text DEFAULT 'stash' NOT NULL,
 	CONSTRAINT "loadout_items_account_id_slot_pk" PRIMARY KEY("account_id","slot"),
-	CONSTRAINT "loadout_items_slot_known" CHECK ("loadout_items"."slot" IN ('primary', 'sidearm', 'tool') OR "loadout_items"."slot" ~ '^backpack\.[0-7]$'),
+	CONSTRAINT "loadout_items_slot_known" CHECK ("loadout_items"."slot" IN ('primary', 'sidearm', 'tool', 'backpack.0', 'backpack.1', 'backpack.2', 'backpack.3', 'backpack.4', 'backpack.5', 'backpack.6', 'backpack.7')),
 	CONSTRAINT "loadout_items_location_stash" CHECK ("loadout_items"."location" = 'stash')
 );
 --> statement-breakpoint

@@ -1,3 +1,4 @@
+import { LOADOUT_SLOTS, type LoadoutIssue } from '@orbit/catalog';
 import { z } from 'zod';
 import { nickSchema, passwordSchema } from './identity';
 
@@ -61,9 +62,11 @@ export const moveStashSchema = z.strictObject({
   toSlot: z.int().min(0).max(1000),
 });
 
-/** Equipment and backpack picks; 3 equipment slots plus 8 backpack slots at most. */
+/** Equipment and backpack picks; at most one per loadout slot. */
 export const setLoadoutSchema = z.strictObject({
-  picks: z.array(z.strictObject({ slot: z.string().min(1).max(32), instanceId: z.uuid() })).max(11),
+  picks: z
+    .array(z.strictObject({ slot: z.string().min(1).max(32), instanceId: z.uuid() }))
+    .max(LOADOUT_SLOTS.length),
 });
 
 /** One loadout position; `issue` is set when the entry breaks a rule (e.g. after a class change). */
@@ -72,7 +75,7 @@ export interface LoadoutEntryView {
   readonly instanceId: string;
   readonly itemId: string;
   readonly quantity: number;
-  readonly issue: string | null;
+  readonly issue: LoadoutIssue | null;
 }
 
 export interface LoadoutResponse {
@@ -83,7 +86,7 @@ export interface LoadoutResponse {
 /** 422 body of a refused loadout: why each slot was refused. Nothing was saved. */
 export interface LoadoutRefusalBody {
   readonly error: typeof AccountErrorCode.InvalidLoadout;
-  readonly issues: readonly { readonly slot: string; readonly issue: string }[];
+  readonly issues: readonly { readonly slot: string; readonly issue: LoadoutIssue }[];
 }
 
 /** Inventory of the session's account; item names and rules come from the catalog. */

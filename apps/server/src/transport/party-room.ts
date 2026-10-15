@@ -105,10 +105,30 @@ export class PartyRoom
         return this.#refuse(client, action, PartyErrorCode.NotMember);
       }
       // Each member chooses their own class; repeated classes are allowed.
-      member.classId = classId;
-      this.#deps.classPreferences?.save(accountId, classId).catch((error: unknown) => {
-        const name = error instanceof Error ? error.name : typeof error;
-        console.error(`[party] não foi possível salvar a classe: ${name}`);
+      const preferences = this.#deps.classPreferences;
+      if (!preferences) {
+        member.classId = classId;
+        return;
+      }
+      // The class is shown only after the account remembers it, so every server check
+      // of the class (loadout, readiness) agrees with what the party displays. Saves of
+      // one account run in order, so the last choice wins.
+      const previous = this.#classSaves.get(accountId) ?? Promise.resolve();
+      const next = previous.then(async () => {
+        try {
+          await preferences.save(accountId, classId);
+        } catch (error) {
+          const name = error instanceof Error ? error.name : typeof error;
+          console.error(`[party] não foi possível salvar a classe: ${name}`);
+          this.#refuse(client, action, PartyErrorCode.ClassNotSaved);
+          return;
+        }
+        const current = this.state.members.get(accountId);
+        if (current) current.classId = classId;
+      });
+      this.#classSaves.set(accountId, next);
+      void next.finally(() => {
+        if (this.#classSaves.get(accountId) === next) this.#classSaves.delete(accountId);
       });
     });
     this.onMessage(PartyClientMessage.SelectShip, (client: PartyClient, raw: unknown) => {
@@ -317,6 +337,9 @@ export class PartyRoom
   #isLeader(client: PartyClient): boolean {
     return client.auth?.accountId === this.state.leaderId;
   }
+
+  /** Pending class saves per account, chained so they finish in order. */
+  readonly #classSaves = new Map<string, Promise<void>>();
 
   #refuse(client: PartyClient, action: string, code: PartyErrorCode): void {
     const refusal: PartyRefusal = { action, code };

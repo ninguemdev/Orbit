@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { LOADOUT_SLOTS } from '@orbit/catalog';
 import {
   bigint,
   check,
@@ -229,7 +230,7 @@ export const loadoutItems = pgTable(
     accountId: uuid('account_id')
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
-    /** `primary`, `sidearm`, `tool` or `backpack.<0-7>`. */
+    /** One of LOADOUT_SLOTS: `primary`, `sidearm`, `tool` or `backpack.<n>`. */
     slot: text('slot').notNull(),
     itemInstanceId: uuid('item_instance_id').notNull(),
     location: text('location').notNull().default('stash'),
@@ -242,9 +243,10 @@ export const loadoutItems = pgTable(
       columns: [table.itemInstanceId, table.accountId, table.location],
       foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
     }).onDelete('cascade'),
+    // Derived from the catalog: changing the slots shows up as schema drift.
     check(
       'loadout_items_slot_known',
-      sql`${table.slot} IN ('primary', 'sidearm', 'tool') OR ${table.slot} ~ '^backpack\\.[0-7]$'`,
+      sql`${table.slot} IN (${sql.raw(LOADOUT_SLOTS.map((slot) => `'${slot}'`).join(', '))})`,
     ),
     check('loadout_items_location_stash', sql`${table.location} = 'stash'`),
   ],

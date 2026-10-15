@@ -17,13 +17,17 @@ export const BACKPACK_SLOTS = 8;
 /** A loadout position: an equipment slot or `backpack.<index>`. */
 export type LoadoutSlot = EquipSlot | `backpack.${number}`;
 
-export function isLoadoutSlot(value: string): value is LoadoutSlot {
-  if ((EQUIP_SLOTS as readonly string[]).includes(value)) return true;
-  const match = /^backpack\.(\d)$/.exec(value);
-  return match !== null && Number(match[1]) < BACKPACK_SLOTS;
-}
-
 export const backpackSlot = (index: number): LoadoutSlot => `backpack.${index}`;
+
+/** Every loadout position: equipment first, then the backpack in order. */
+export const LOADOUT_SLOTS: readonly LoadoutSlot[] = [
+  ...EQUIP_SLOTS,
+  ...Array.from({ length: BACKPACK_SLOTS }, (_, index) => backpackSlot(index)),
+];
+
+export function isLoadoutSlot(value: string): value is LoadoutSlot {
+  return (LOADOUT_SLOTS as readonly string[]).includes(value);
+}
 
 /** Why an item cannot go in a loadout position. */
 export type LoadoutIssue =

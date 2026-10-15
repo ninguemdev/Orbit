@@ -1,5 +1,11 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { type ClassId, type LoadoutIssue, isClassId, loadoutItemIssue } from '@orbit/catalog';
+import {
+  type ClassId,
+  type LoadoutIssue,
+  isClassId,
+  isLoadoutSlot,
+  loadoutItemIssue,
+} from '@orbit/catalog';
 import type { Database } from '../client';
 import { itemInstances, loadoutItems, profiles } from '../schema';
 import { type Executor, lockAccount } from './inventory';
@@ -110,7 +116,8 @@ export async function setLoadout(
     for (const pick of picks) {
       const itemId = itemOf.get(pick.instanceId);
       let issue: LoadoutIssue | null;
-      if (slots.has(pick.slot)) issue = 'duplicate_slot';
+      if (!isLoadoutSlot(pick.slot)) issue = 'invalid_slot';
+      else if (slots.has(pick.slot)) issue = 'duplicate_slot';
       else if (items.has(pick.instanceId)) issue = 'duplicate_item';
       else if (itemId === undefined) issue = 'not_owned';
       else issue = loadoutItemIssue(itemId, pick.slot, classId);

@@ -1,35 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { InventoryResponse } from '@orbit/contracts';
-import { accountClient, describeAccountError } from '../network/account-client';
+import { LoadoutPanel } from './LoadoutPanel';
 import { itemName, shipName } from './catalog-names';
+import { type InventoryControls, useInventory } from './use-inventory';
 
-/**
- * Permanent possessions of the account, read from the server (never edited locally).
- * Refreshed on demand and whenever the window regains focus.
- */
-export function InventoryPanel() {
-  const [inventory, setInventory] = useState<InventoryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const result = await accountClient.inventory();
-    setLoading(false);
-    if (result.ok) {
-      setInventory(result.data);
-      setError(null);
-    } else {
-      setError(describeAccountError(result.code));
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    const onFocus = () => void load();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [load]);
+/** Permanent possessions of the account, read from the server (never edited locally). */
+export function InventoryPanel({ inventory: controls }: { inventory: InventoryControls }) {
+  const { inventory, error, loading } = controls;
 
   return (
     <section className="inventory" aria-label="Inventário" data-testid="inventory">
@@ -77,9 +52,25 @@ export function InventoryPanel() {
       ) : !error ? (
         <p>Carregando inventário…</p>
       ) : null}
-      <button type="button" className="secondary" disabled={loading} onClick={() => void load()}>
+      <button
+        type="button"
+        className="secondary"
+        disabled={loading}
+        onClick={() => void controls.reload()}
+      >
         {error ? 'Tentar de novo' : 'Atualizar'}
       </button>
     </section>
+  );
+}
+
+/** Inventory and loadout of the signed-in account, sharing one inventory read. */
+export function PreparationPanels({ classId }: { classId: string }) {
+  const inventory = useInventory();
+  return (
+    <>
+      <InventoryPanel inventory={inventory} />
+      <LoadoutPanel classId={classId} inventory={inventory} />
+    </>
   );
 }

@@ -101,7 +101,7 @@ describe('loadout', () => {
         { slot: 'sidearm', issue: 'not_owned' },
         { slot: 'backpack.0', issue: 'not_owned' },
         { slot: 'backpack.1', issue: 'duplicate_item' },
-        { slot: 'backpack.9', issue: 'duplicate_item' },
+        { slot: 'backpack.9', issue: 'invalid_slot' },
         { slot: 'backpack.0', issue: 'duplicate_slot' },
       ],
     });

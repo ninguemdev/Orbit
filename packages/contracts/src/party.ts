@@ -59,6 +59,8 @@ export const PartyErrorCode = {
   InvalidPayload: 'invalid_payload',
   UnknownClass: 'unknown_class',
   ShipUnavailable: 'ship_unavailable',
+  /** The class could not be saved to the account; the previous class stays. */
+  ClassNotSaved: 'class_not_saved',
 } as const;
 export type PartyErrorCode = (typeof PartyErrorCode)[keyof typeof PartyErrorCode];
 

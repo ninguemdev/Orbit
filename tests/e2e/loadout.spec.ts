@@ -58,4 +58,16 @@ test('prepares a loadout from the stash, checked by the server', async ({ browse
       'sua classe não pode equipar esse item',
     );
   });
+
+  await test.step('unsaved picks survive a class change', async () => {
+    await loadout.getByLabel('Mochila 2').selectOption({ label: 'Sucata ×20' });
+    await page.getByRole('radio', { name: /^Oficial/ }).click();
+    await expect(page.getByRole('radio', { name: /^Oficial/ })).toBeChecked();
+    await expect(loadout).toContainText('Classe: Oficial');
+    await expect(loadout.getByLabel('Mochila 2').locator('option:checked')).toHaveText(
+      'Sucata ×20',
+    );
+    await loadout.getByRole('button', { name: 'Salvar loadout' }).click();
+    await expect(loadout.getByTestId('loadout-saved')).toHaveText('4 item(ns) no loadout salvo.');
+  });
 });

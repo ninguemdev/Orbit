@@ -6,8 +6,7 @@ import { SectorConnection, defaultServerEndpoint } from '../network/sector-conne
 import { AccessScreen } from './AccessScreen';
 import { GameView } from './GameView';
 import { Hud } from './Hud';
-import { InventoryPanel } from './InventoryPanel';
-import { LoadoutPanel } from './LoadoutPanel';
+import { PreparationPanels } from './InventoryPanel';
 import { PartyPanel } from './PartyPanel';
 import { RecoveryCodePanel } from './RecoveryCodePanel';
 import { useParty } from './use-party';
@@ -216,8 +215,7 @@ export function App() {
             </p>
           ) : null}
           <PartyPanel party={party} myAccountId={me.account.id} />
-          <InventoryPanel />
-          <LoadoutPanel
+          <PreparationPanels
             classId={
               party.view?.members.find((member) => member.accountId === me.account.id)?.classId ??
               me.profile.classId ??
