@@ -1,0 +1,19 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #05070d;
+  color: #e6ecf5;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+.menu {
+  max-width: 28rem;
+  margin: 10vh auto;
+  padding: 0 1rem;
+}

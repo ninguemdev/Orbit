@@ -1,0 +1,38 @@
+{
+  "name": "orbit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @orbit/server --filter @orbit/web dev",
+    "dev:server": "pnpm --filter @orbit/server dev",
+    "dev:web": "pnpm --filter @orbit/web dev",
+    "lint": "eslint apps packages tests \"*.{js,ts}\" --max-warnings 0 --no-error-on-unmatched-pattern",
+    "format": "prettier --write apps packages tests infra .github \"*.{js,ts,json,yaml}\" --no-error-on-unmatched-pattern",
+    "format:check": "prettier --check apps packages tests infra .github \"*.{js,ts,json,yaml}\" --no-error-on-unmatched-pattern",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --no-bail typecheck",
+    "test": "vitest run",
+    "build": "pnpm -r build",
+    "db:up": "docker compose -f infra/compose.dev.yml up -d --wait",
+    "db:down": "docker compose -f infra/compose.dev.yml down",
+    "db:migrate": "pnpm --filter @orbit/database migrate",
+    "db:smoke": "pnpm --filter @orbit/database smoke",
+    "e2e": "playwright test",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.19.2",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.4"
+  }
+}

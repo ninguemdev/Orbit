@@ -1,0 +1,4 @@
+pnpm-lock.yaml
+packages/database/migrations/meta/
+docs/
+*.md
