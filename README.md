@@ -2,7 +2,7 @@
 
 Jogo 2D top down de extração espacial cooperativa para navegador. Uma tripulação pilota uma nave, explora o setor, recupera recursos e precisa alcançar a extração para guardar as recompensas no inventário permanente.
 
-**Nome provisório:** Orbit. **Estado atual:** protótipo técnico da versão 0.1.0. Duas ou mais pessoas entram na mesma sala de desenvolvimento, caminham dentro da nave e uma delas pilota a nave pelo setor. Ainda não há contas, inventário, loot, extração nem classes jogáveis; essas funções seguem o [roadmap](docs/08-ROADMAP.md).
+**Nome provisório:** Orbit. **Estado atual:** versão 0.2 (preparação persistente). Cada jogador cria uma conta com nick e senha, forma uma party de até 4, escolhe classe, loadout do próprio stash e uma nave da união das licenças da party, e o líder confirma a prontidão; tudo fica salvo na conta. A sala de testes da 0.1 continua disponível: duas ou mais pessoas caminham dentro da nave e uma pilota pelo setor. Ainda não há missão com a party, loot, extração nem efeitos de classe; essas funções seguem o [roadmap](docs/08-ROADMAP.md).
 
 ## A experiência
 
@@ -93,7 +93,7 @@ Executados e verificados no Windows 11 com Node 24.18.0 e pnpm 12.9.1, e no CI (
 | `pnpm db:up` / `pnpm db:down` | Sobe/derruba o PostgreSQL 18 de `infra/compose.dev.yml` |
 | `pnpm db:migrate` | Aplica as migrações em `DATABASE_URL` |
 | `pnpm db:smoke` | Cria um banco descartável, migra duas vezes, confere o schema e as conexões encerradas |
-| `pnpm db:seed-dev <nick>` | Concede um conjunto fixo de itens de teste e a licença da Cargueira a uma conta (recusado em produção) |
+| `pnpm db:seed-dev <nick> [--no-ships]` | Concede um conjunto fixo de itens de teste e, sem `--no-ships`, a licença da Cargueira a uma conta (recusado em produção) |
 | `pnpm test:db` | Testes de integração SQL (constraints, concorrência, rollback) em bancos descartáveis; exige `pnpm db:up` |
 | `pnpm build && pnpm e2e` | Teste multiplayer com dois navegadores sobre o build de produção |
 
@@ -114,7 +114,14 @@ Depois de entrar na conta, cada jogador já está numa party só sua, com um có
 - Digite o código de outra party em **Entrar em outra party**; ou
 - Como líder, convide pelo nick em **Convidar jogador online**; a outra pessoa aceita no próprio menu.
 
-Cada jogador escolhe a própria classe para a próxima missão (Piloto, Engenheiro, Médico ou Oficial; repetir é permitido), a escolha fica salva na conta e todos veem o roster. Nesta versão a classe só identifica a função; os efeitos entram nas versões indicadas no menu. O líder pode **Passar liderança** e **Remover** membros (até 4 por party). Quem sai volta para uma party só sua; se o líder sai, o membro mais antigo assume. A sala de desenvolvimento ainda é compartilhada por todos, independentemente da party.
+Cada jogador escolhe a própria classe para a próxima missão (Piloto, Engenheiro, Médico ou Oficial; repetir é permitido), a escolha fica salva na conta e todos veem o roster. Nesta versão a classe só identifica a função e restringe armas (o fuzil longo é do Oficial); os efeitos entram nas versões indicadas no menu. O líder pode **Passar liderança** e **Remover** membros (até 4 por party). Quem sai volta para uma party só sua; se o líder sai, o membro mais antigo assume. A sala de desenvolvimento ainda é compartilhada por todos, independentemente da party.
+
+Para preparar a missão:
+
+- **Inventário:** toda conta começa com 200 créditos e a licença da Batedora. Para ter itens de teste, rode `pnpm db:seed-dev <nick>` e clique em **Atualizar** no inventário.
+- **Loadout:** escolha arma principal, arma secundária, ferramenta e até 8 itens de mochila entre os itens do seu stash e clique em **Salvar loadout**. O servidor recusa item de outra conta, espaço errado e arma de outra classe. Os itens continuam no stash; a reserva para a partida começa na 0.3.
+- **Nave:** a party pode usar qualquer nave liberada por um dos membros, e o painel mostra quem libera cada uma. O líder escolhe.
+- **Prontidão:** cada membro clica em **Estou pronto**, e o líder clica em **Confirmar preparação** quando todos estiverem prontos. Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos.
 
 ### API de conta
 
@@ -146,7 +153,9 @@ Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGIN
 - Uma queda reserva o assento por 60 s. O tripulante aparece como "reconectando", e fechar a aba deixa o personagem na sala até esse prazo. A detecção depende do heartbeat do servidor e pode levar alguns segundos.
 - Um único setor fixo, um casco de nave e colisão por círculos contra asteroides. Não há dano, boost, consoles extras, EVA nem combate.
 - A sala de desenvolvimento ainda não valida a sessão: o nick da conta é usado como rótulo, e o roster autenticado chega na V03.02.
-- Parties ficam na memória do processo de jogo: reiniciar o servidor desfaz as parties (as contas permanecem).
+- Parties ficam na memória do processo de jogo: reiniciar o servidor desfaz as parties e a prontidão (conta, classe, inventário, licenças e loadout permanecem).
+- A preparação confirmada ainda não inicia uma missão: a partida com a party, a reserva dos itens e o retorno da mochila chegam na 0.3.
+- Licença de nave ganha durante a party aparece ao entrar de novo em uma party.
 - Sem e-mail: quem perder a senha e não tiver gerado o código de recuperação não recupera a conta.
 - Sem deploy, HTTPS nem proxy. Use apenas em ambiente de desenvolvimento.
 

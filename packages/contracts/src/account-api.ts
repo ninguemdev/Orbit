@@ -57,6 +57,9 @@ export const loginSchema = z.strictObject({
 
 export const updateProfileSchema = z.strictObject({ colorId: z.string().max(64) });
 
+/** Routes whose only input is the session take an empty JSON object, nothing more. */
+export const emptyBodySchema = z.strictObject({});
+
 export const moveStashSchema = z.strictObject({
   fromSlot: z.int().min(0).max(1000),
   toSlot: z.int().min(0).max(1000),

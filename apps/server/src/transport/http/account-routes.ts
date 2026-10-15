@@ -10,6 +10,7 @@ import {
   type LoadoutRefusalBody,
   type LoadoutResponse,
   setLoadoutSchema,
+  emptyBodySchema,
   moveStashSchema,
   updateProfileSchema,
 } from '@orbit/contracts';
@@ -137,7 +138,11 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
 
   router.post(
     AccountRoute.MyRecoveryCode,
-    withSession(async (_request, response, session) => {
+    withSession(async (request, response, session) => {
+      // No body or `{}`; fields are refused.
+      if (request.body !== undefined && !emptyBodySchema.safeParse(request.body).success) {
+        return fail(response, AccountErrorCode.InvalidInput);
+      }
       const body: RecoveryCodeResponse = {
         code: await identity.createRecoveryCode(session.accountId),
       };

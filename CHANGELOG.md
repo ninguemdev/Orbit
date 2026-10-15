@@ -4,6 +4,8 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-15
+
 ### Adicionado
 
 - Tabelas de identidade (`accounts`, `sessions`, `account_recovery`, `profiles`) com nick único sem diferenciar maiúsculas, apenas hashes Argon2id/SHA-256 e testes de integração SQL (`pnpm test:db`).
@@ -15,9 +17,13 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 - União das naves da party: cada membro traz as próprias licenças, o líder escolhe entre elas e a escolha é desfeita quando sai o último dono; nova nave Cargueira no catálogo.
 - Loadout da próxima missão: arma principal, arma secundária, ferramenta e mochila de 8 espaços, escolhidos do próprio stash e conferidos no servidor (dono, espaço e classe), sem mexer no stash.
 - Prontidão da party: cada membro fica pronto na revisão atual, qualquer mudança relevante desfaz a prontidão de todos e o líder confirma o roster quando todos estão prontos.
+- Gate da 0.2: E2E com duas contas (classes, loadouts, nave da união, prontidão, confirmação e relogin mantendo tudo) e matriz de autorização das rotas de conta.
+- `pnpm db:seed-dev <nick> --no-ships` concede só os itens de teste.
 
 ### Corrigido
 
+- `POST /api/me/recovery-code` passa a recusar corpo com campos, como as outras rotas.
+- Naves liberadas no inventário aparecem na ordem do catálogo (a Batedora primeiro), como na party.
 - Uma queda antes de concluir a entrada numa sala não derruba mais o servidor de jogo.
 
 ### Alterado

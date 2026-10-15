@@ -28,11 +28,11 @@ export async function signUpInNewContext(
   return { page, nick };
 }
 
-/** Grants dev data (items and the hauler license) through the database script. */
-export function seedDev(nick: string): void {
+/** Grants dev data (items, and the hauler license unless `ships` is false) through the database script. */
+export function seedDev(nick: string, { ships = true }: { ships?: boolean } = {}): void {
   if (!/^[A-Za-z0-9_]+$/.test(nick)) throw new Error(`nick inesperado: ${nick}`);
   // pnpm is a .cmd on Windows, which needs a shell; the nick was checked above.
-  execFileSync('pnpm', ['db:seed-dev', nick], {
+  execFileSync('pnpm', ['db:seed-dev', nick, ...(ships ? [] : ['--no-ships'])], {
     stdio: 'pipe',
     shell: process.platform === 'win32',
   });

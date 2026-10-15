@@ -189,8 +189,9 @@ export function App() {
             Conectado como <strong>{me.account.nick}</strong>
           </p>
           <p>
-            Protótipo 0.2 — forme sua party; a sala de desenvolvimento ainda é compartilhada por
-            todos.
+            Prepare a próxima missão: forme a party, escolha classe, loadout e nave e confirme a
+            prontidão. A missão com a party começa na 0.3; &quot;Entrar na sala&quot; abre a sala de
+            testes da 0.1, compartilhada por todos e sem a sua party.
           </p>
           <label className="inline">
             <input type="checkbox" checked={economy} onChange={toggleEconomy} /> Modo econômico (30

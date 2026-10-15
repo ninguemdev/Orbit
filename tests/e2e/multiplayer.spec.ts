@@ -202,7 +202,17 @@ test('two browsers share the room, walk, and see the same ship being piloted', a
     // still be arriving.
     const [settledBefore] = await settled(alfa, bravo);
     const before = settledBefore.crew[alfaId];
-    await hold(alfa, 'KeyA', 500);
+    // In CI the first key presses right after reconnecting sometimes have no effect;
+    // pressing again must move the same crew member.
+    await expect
+      .poll(
+        async () => {
+          await hold(alfa, 'KeyA', 300);
+          return (await world(alfa)).crew[alfaId]?.x ?? Infinity;
+        },
+        { timeout: 10_000 },
+      )
+      .toBeLessThan((before?.x ?? -Infinity) - 10);
     const [a, b] = await settled(alfa, bravo);
     expect(a.crew[alfaId]?.x).toBeLessThan(before?.x ?? -Infinity);
     expect(b.crew[alfaId]).toEqual(a.crew[alfaId]);

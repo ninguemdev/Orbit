@@ -216,6 +216,15 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
 /** Display and default order of ships: the starter ship first. */
 export const SHIP_ORDER: readonly ShipHullId[] = [ShipHullId.Scout, ShipHullId.Hauler];
 
+/** Ship IDs in catalog order; unknown IDs keep their relative order, after known ones. */
+export function sortByShipOrder<T>(items: readonly T[], idOf: (item: T) => string): T[] {
+  const rank = (id: string) => {
+    const index = (SHIP_ORDER as readonly string[]).indexOf(id);
+    return index === -1 ? SHIP_ORDER.length : index;
+  };
+  return [...items].sort((a, b) => rank(idOf(a)) - rank(idOf(b)));
+}
+
 export function isShipHullId(value: string): value is ShipHullId {
   return Object.hasOwn(SHIP_HULLS, value);
 }
