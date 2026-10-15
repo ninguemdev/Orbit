@@ -21,6 +21,29 @@ export const CLASS_NAMES: Readonly<Record<ClassId, string>> = {
   [ClassId.Officer]: 'Oficial',
 };
 
+/** Player appearance options. Profiles store these IDs; the server rejects anything else. */
+export const AppearanceColorId = {
+  Cyan: 'appearance.color.cyan',
+  Amber: 'appearance.color.amber',
+  Green: 'appearance.color.green',
+  Pink: 'appearance.color.pink',
+} as const;
+export type AppearanceColorId = (typeof AppearanceColorId)[keyof typeof AppearanceColorId];
+
+export const APPEARANCE_COLORS: Readonly<Record<AppearanceColorId, { name: string; hex: number }>> =
+  {
+    [AppearanceColorId.Cyan]: { name: 'Ciano', hex: 0x4fc3f7 },
+    [AppearanceColorId.Amber]: { name: 'Âmbar', hex: 0xffb74d },
+    [AppearanceColorId.Green]: { name: 'Verde', hex: 0x81c784 },
+    [AppearanceColorId.Pink]: { name: 'Rosa', hex: 0xf06292 },
+  };
+
+export const DEFAULT_APPEARANCE_COLOR: AppearanceColorId = AppearanceColorId.Cyan;
+
+export function isAppearanceColorId(value: string): value is AppearanceColorId {
+  return Object.hasOwn(APPEARANCE_COLORS, value);
+}
+
 export interface CrewDefinition {
   readonly radius: number;
   /** Walking speed inside a ship, px/s. */

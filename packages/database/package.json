@@ -14,6 +14,8 @@
     "smoke": "tsx --env-file-if-exists=../../.env scripts/smoke.ts"
   },
   "dependencies": {
+    "@orbit/catalog": "workspace:*",
+    "@orbit/contracts": "workspace:*",
     "drizzle-orm": "0.45.4",
     "pg": "8.23.1"
   },

@@ -16,6 +16,7 @@
     "format:check": "prettier --check apps packages tests infra .github \"*.{js,ts,json,yaml}\" --no-error-on-unmatched-pattern",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --no-bail typecheck",
     "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "build": "pnpm -r build",
     "db:up": "docker compose -f infra/compose.dev.yml up -d --wait",
     "db:down": "docker compose -f infra/compose.dev.yml down",
