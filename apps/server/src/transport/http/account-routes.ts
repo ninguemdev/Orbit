@@ -7,6 +7,7 @@ import {
   updateProfileSchema,
 } from '@orbit/contracts';
 import { type ActiveSession, postgresError } from '@orbit/database';
+import { clientAddressKey } from '../../infrastructure/client-address';
 import { OverloadedError } from '../../infrastructure/semaphore';
 import type {
   IdentityFailure,
@@ -67,7 +68,8 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
   });
   router.use('/api', express.json({ limit: '4kb', strict: true }));
 
-  const address = (request: Request) => request.ip ?? 'unknown';
+  // request.ip honors the app's 'trust proxy' setting (TRUST_PROXY).
+  const address = (request: Request) => clientAddressKey(request.ip);
 
   const signedIn = (response: Response, result: SignedIn | IdentityFailure, status: number) => {
     if (!result.ok) return fail(response, result.code);
@@ -98,14 +100,15 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
     signedIn(response, await identity.login(request.body, address(request)), 200);
   });
 
-  router.delete(
-    AccountRoute.CurrentSession,
-    withSession(async (_request, response, session) => {
-      await identity.logout(session);
-      response.setHeader('Set-Cookie', clearedSessionCookie(cookie));
-      response.status(204).end();
-    }),
-  );
+  router.delete(AccountRoute.CurrentSession, async (request, response) => {
+    // The cookie is cleared even when the session is already dead (expired, revoked,
+    // account disabled): an HttpOnly cookie cannot be removed by the client itself.
+    response.setHeader('Set-Cookie', clearedSessionCookie(cookie));
+    const session = await identity.authenticate(readCookie(request.headers.cookie, SESSION_COOKIE));
+    if (!session) return fail(response, AccountErrorCode.Unauthenticated);
+    await identity.logout(session);
+    response.status(204).end();
+  });
 
   router.get(
     AccountRoute.Me,
@@ -132,8 +135,12 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
     (error: unknown, _request: Request, response: Response, next: NextFunction) => {
       if (response.headersSent) return next(error);
       if (error instanceof OverloadedError) return fail(response, AccountErrorCode.Overloaded);
+      // Body parser errors (bad JSON, size, charset, encoding) are client errors.
       const status = (error as { status?: number }).status;
-      if (status === 400 || status === 413) return fail(response, AccountErrorCode.InvalidInput);
+      if (status === 415) return fail(response, AccountErrorCode.UnsupportedMediaType);
+      if (status !== undefined && status >= 400 && status < 500) {
+        return fail(response, AccountErrorCode.InvalidInput);
+      }
       // Never log the message: database errors embed query parameters (hashes, nicks).
       const name = error instanceof Error ? error.name : typeof error;
       console.error(`[api] erro inesperado: ${name} ${postgresError(error)?.code ?? ''}`);

@@ -3,8 +3,13 @@ import { createGameServer } from './app';
 import { readServerConfig } from './config';
 import { IdentityService } from './modules/identity/identity-service';
 import { createArgon2Hasher } from './modules/identity/password-hasher';
+import { configureProcessCors } from './transport/http/cors-policy';
 
 const config = readServerConfig();
+configureProcessCors({
+  allowedOrigins: config.allowedOrigins,
+  allowMissingOrigin: config.allowMissingOrigin,
+});
 const pool = createPool({ connectionString: config.databaseUrl, max: 10 });
 const identity = new IdentityService({
   db: createDatabase(pool),

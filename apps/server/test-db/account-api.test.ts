@@ -204,6 +204,48 @@ describe('account API', () => {
     ).toBe(401);
   });
 
+  it('counts simultaneous guesses against the nick limit before hashing', async () => {
+    await signUp('Alvo_Paralelo');
+    const guesses = await Promise.all(
+      Array.from({ length: 20 }, (_, i) => login('Alvo_Paralelo', `chute paralelo ${i}`)),
+    );
+    const statuses = guesses.map((guess) => guess.status);
+    expect(statuses.filter((status) => status === 401)).toHaveLength(
+      DEFAULT_IDENTITY_POLICY.loginFailuresPerNick,
+    );
+    expect(statuses.filter((status) => status === 429)).toHaveLength(
+      20 - DEFAULT_IDENTITY_POLICY.loginFailuresPerNick,
+    );
+  });
+
+  it('answers malformed nicks like unknown ones', async () => {
+    expect(await login('com espaço', 'qualquer senha errada')).toMatchObject({
+      status: 401,
+      body: { error: 'invalid_credentials' },
+    });
+  });
+
+  it('clears the cookie on logout even when the session is already dead', async () => {
+    const { token } = await signUp('Sessao_Morta');
+    await api.pool.query(
+      `UPDATE sessions SET revoked_at = now() WHERE account_id = (SELECT id FROM accounts WHERE nick = 'Sessao_Morta')`,
+    );
+    const out = await call(api.baseUrl, AccountRoute.CurrentSession, {
+      method: 'DELETE',
+      token: token ?? '',
+      origin: ALLOWED_ORIGIN,
+    });
+    expect(out).toMatchObject({ status: 401, token: '' });
+  });
+
+  it('treats unsupported JSON charsets as a client error', async () => {
+    const response = await post(AccountRoute.Sessions, undefined, {
+      rawBody: '{"nick":"a","password":"b"}',
+      contentType: 'application/json; charset=latin1',
+    });
+    expect(response).toMatchObject({ status: 415, body: { error: 'unsupported_media_type' } });
+  });
+
   it('locks a nick after repeated wrong passwords, even for the right one', async () => {
     await signUp('Alvo_Brute');
     for (let i = 0; i < DEFAULT_IDENTITY_POLICY.loginFailuresPerNick; i++) {
@@ -216,8 +258,9 @@ describe('account API', () => {
   });
 
   it('serves concurrent logins while hashing at most two passwords at a time', async () => {
-    await signUp('Muitos_Logins');
-    const results = await Promise.all(Array.from({ length: 8 }, () => login('Muitos_Logins')));
+    const nicks = Array.from({ length: 8 }, (_, i) => `Simultanea_${i}`);
+    for (const nick of nicks) await signUp(nick);
+    const results = await Promise.all(nicks.map((nick) => login(nick)));
     expect(results.map((result) => result.status)).toEqual(Array(8).fill(200));
     expect(new Set(results.map((result) => result.token)).size).toBe(8);
     expect(api.hasher.peakConcurrency).toBe(2);

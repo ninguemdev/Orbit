@@ -6,6 +6,8 @@ export interface ServerConfig {
   readonly allowMissingOrigin: boolean;
   /** Session cookies require HTTPS unless explicitly disabled for local development. */
   readonly cookieSecure: boolean;
+  /** Express 'trust proxy' value: false (direct clients) or the number of proxy hops. */
+  readonly trustProxy: false | number;
 }
 
 export interface ServerEnvironment extends ServerConfig {
@@ -26,16 +28,29 @@ export function readServerConfig(env: NodeJS.ProcessEnv = process.env): ServerEn
     .map((origin) => origin.trim())
     .filter(Boolean);
   const production = env['NODE_ENV'] === 'production';
-  const cookieSecure =
-    env['COOKIE_SECURE'] === undefined ? production : env['COOKIE_SECURE'] === 'true';
-  if (production && !cookieSecure)
-    throw new Error('COOKIE_SECURE=false não é permitido em produção.');
+  const cookieSecure = readBoolean(env, 'COOKIE_SECURE', production);
+  if (production && !cookieSecure) {
+    throw new Error('Cookies sem Secure (COOKIE_SECURE) não são permitidos em produção.');
+  }
+  const hops = env['TRUST_PROXY'] ?? '0';
+  if (!/^\d+$/.test(hops)) throw new Error(`TRUST_PROXY inválido: ${hops}`);
   return {
     port,
     host: env['HOST'] ?? '127.0.0.1',
     allowedOrigins: new Set(origins),
     allowMissingOrigin: !production,
     cookieSecure,
+    trustProxy: Number(hops) > 0 ? Number(hops) : false,
     databaseUrl,
   };
+}
+
+/** Accepts true/false/1/0 (any case); anything else is a configuration error. */
+function readBoolean(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boolean {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = raw.trim().toLowerCase();
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  throw new Error(`${name} inválido: ${raw} (use true ou false)`);
 }

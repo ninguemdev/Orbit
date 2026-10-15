@@ -4,6 +4,7 @@ import {
   type MeResponse,
   credentialsSchema,
   loginSchema,
+  nickSchema,
   normalizeNick,
 } from '@orbit/contracts';
 import {
@@ -26,7 +27,7 @@ export interface IdentityPolicy {
   readonly sessionTtlMs: number;
   /** Login attempts per client address per window. */
   readonly loginAttemptsPerAddress: number;
-  /** Failed logins per nick per window before that nick is temporarily refused. */
+  /** Login attempts per nick per window without a success before that nick is refused. */
   readonly loginFailuresPerNick: number;
   readonly signUpsPerAddress: number;
   readonly limitWindowMs: number;
@@ -125,21 +126,24 @@ export class IdentityService {
   async login(input: unknown, address: string): Promise<SignedIn | IdentityFailure> {
     const parsed = loginSchema.safeParse(input);
     if (!parsed.success) return { ok: false, code: AccountErrorCode.InvalidInput };
-    const nickKey = normalizeNick(parsed.data.nick);
-    if (!this.#loginByAddress.tryConsume(address) || this.#failuresByNick.isLimited(nickKey)) {
+    if (!this.#loginByAddress.tryConsume(address)) {
       return { ok: false, code: AccountErrorCode.RateLimited };
     }
-    const account = await findAccountByNick(this.#db, parsed.data.nick);
+    // Only well-formed nicks can exist, so only they get a per-nick counter. The attempt
+    // is counted before hashing: concurrent guesses cannot all pass a later check.
+    const validNick = nickSchema.safeParse(parsed.data.nick).success;
+    const nickKey = normalizeNick(parsed.data.nick);
+    if (validNick && !this.#failuresByNick.tryConsume(nickKey)) {
+      return { ok: false, code: AccountErrorCode.RateLimited };
+    }
+    const account = validNick ? await findAccountByNick(this.#db, parsed.data.nick) : null;
     let valid = false;
     if (account?.status === 'active') {
       valid = await this.#hasher.verify(account.passwordHash, parsed.data.password);
     } else {
       await this.#hasher.verifyDummy(parsed.data.password);
     }
-    if (!valid || !account) {
-      this.#failuresByNick.record(nickKey);
-      return { ok: false, code: AccountErrorCode.InvalidCredentials };
-    }
+    if (!valid || !account) return { ok: false, code: AccountErrorCode.InvalidCredentials };
     this.#failuresByNick.reset(nickKey);
     return this.#issue(account.id);
   }
@@ -149,7 +153,9 @@ export class IdentityService {
     if (!token || !isWellFormedToken(token)) return null;
     const now = this.#now();
     const session = await findActiveSession(this.#db, hashSessionToken(token), now);
-    if (session) await touchSession(this.#db, session.sessionId, now, TOUCH_INTERVAL_MS);
+    if (session && now.getTime() - session.lastSeenAt.getTime() >= TOUCH_INTERVAL_MS) {
+      await touchSession(this.#db, session.sessionId, now, TOUCH_INTERVAL_MS);
+    }
     return session;
   }
 

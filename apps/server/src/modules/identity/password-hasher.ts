@@ -28,7 +28,19 @@ export interface HasherLimits {
 
 export function createArgon2Hasher(limits: HasherLimits): PasswordHasher {
   const semaphore = new Semaphore({ max: limits.maxConcurrent, maxQueue: limits.maxQueue });
+  // Computed once, outside the queue, so unknown nicks cost one verification like
+  // real ones; a failure is not cached.
   let dummyHash: Promise<string> | undefined;
+  const getDummyHash = () => {
+    dummyHash ??= hash(randomBytes(32).toString('base64url'), ARGON2ID_OPTIONS).catch(
+      (error: unknown) => {
+        dummyHash = undefined;
+        throw error;
+      },
+    );
+    return dummyHash;
+  };
+  void getDummyHash().catch(() => undefined);
   const hasher: PasswordHasher = {
     hash: (password) => semaphore.run(() => hash(password, ARGON2ID_OPTIONS)),
     verify: (passwordHash, password) =>
@@ -40,8 +52,7 @@ export function createArgon2Hasher(limits: HasherLimits): PasswordHasher {
         }
       }),
     async verifyDummy(password) {
-      dummyHash ??= hasher.hash(randomBytes(32).toString('base64url'));
-      await hasher.verify(await dummyHash, password);
+      await hasher.verify(await getDummyHash(), password);
     },
     get peakConcurrency() {
       return semaphore.peak;

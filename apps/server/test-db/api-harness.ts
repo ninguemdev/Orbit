@@ -13,6 +13,7 @@ import type pg from 'pg';
 import { createGameServer } from '../src/app';
 import { type IdentityPolicy, IdentityService } from '../src/modules/identity/identity-service';
 import { type PasswordHasher, createArgon2Hasher } from '../src/modules/identity/password-hasher';
+import { configureProcessCors } from '../src/transport/http/cors-policy';
 
 export const ALLOWED_ORIGIN = 'http://localhost:5173';
 
@@ -41,13 +42,16 @@ export async function startApiServer(policy: IdentityPolicy): Promise<ApiServer>
     await runMigrations(pool);
     const db = createDatabase(pool);
     const hasher = createArgon2Hasher({ maxConcurrent: 2, maxQueue: 64 });
+    const allowedOrigins = new Set([ALLOWED_ORIGIN]);
+    configureProcessCors({ allowedOrigins, allowMissingOrigin: true });
     server = createGameServer(
       {
         host: '127.0.0.1',
         port: 0,
-        allowedOrigins: new Set([ALLOWED_ORIGIN]),
+        allowedOrigins,
         allowMissingOrigin: true,
         cookieSecure: false,
+        trustProxy: false,
       },
       { identity: new IdentityService({ db, hasher, policy }) },
     );

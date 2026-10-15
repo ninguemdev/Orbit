@@ -8,6 +8,8 @@ export class OverloadedError extends Error {
 /**
  * Bounds how many expensive tasks (password hashing) run at once. Extra callers
  * wait in a bounded queue; beyond it they are refused instead of piling up memory.
+ * A finishing task hands its slot directly to the next waiter, so a caller arriving
+ * in between cannot slip in and exceed the limit.
  */
 export class Semaphore {
   readonly #max: number;
@@ -37,21 +39,18 @@ export class Semaphore {
 
   async #acquire(): Promise<void> {
     if (this.#active < this.#max) {
-      this.#enter();
+      this.#active++;
+      this.#peak = Math.max(this.#peak, this.#active);
       return;
     }
     if (this.#queue.length >= this.#maxQueue) throw new OverloadedError();
+    // Resolved by #release with the slot already counted in #active.
     await new Promise<void>((resolve) => this.#queue.push(resolve));
-    this.#enter();
-  }
-
-  #enter(): void {
-    this.#active++;
-    this.#peak = Math.max(this.#peak, this.#active);
   }
 
   #release(): void {
-    this.#active--;
-    this.#queue.shift()?.();
+    const next = this.#queue.shift();
+    if (next) next();
+    else this.#active--;
   }
 }

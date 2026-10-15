@@ -6,7 +6,6 @@ import type { IdentityService } from './modules/identity/identity-service';
 import { isOriginAllowed } from './transport/access-policy';
 import { defineDevSectorRoom } from './transport/dev-sector-room';
 import { createAccountApi } from './transport/http/account-routes';
-import { applyCorsPolicy } from './transport/http/cors-policy';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -21,7 +20,6 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
     allowedOrigins: config.allowedOrigins,
     allowMissingOrigin: config.allowMissingOrigin,
   };
-  applyCorsPolicy(policy);
   const { identity } = services;
   const server = new Server({
     greet: false,
@@ -37,6 +35,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
       ? {
           express: (app) => {
             app.disable('x-powered-by');
+            app.set('trust proxy', config.trustProxy);
             app.use(
               createAccountApi({
                 identity,

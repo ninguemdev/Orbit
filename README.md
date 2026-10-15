@@ -118,7 +118,7 @@ Rotas JSON no servidor de jogo, com sessão em cookie `orbit_session` (HttpOnly,
 | `GET /api/me` | Conta e perfil da sessão |
 | `PATCH /api/me/profile` | Altera a cor do próprio perfil (opções do catálogo) |
 
-Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGINS`. Login e cadastro têm limite por endereço e por nick.
+Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGINS`. Login e cadastro têm limite por endereço e por nick. Atrás de proxy reverso, configure `TRUST_PROXY` com o número de saltos.
 
 ### Limitações atuais
 
