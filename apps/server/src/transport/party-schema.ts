@@ -9,6 +9,7 @@ export const PartyMemberState = schema(
     joinedAt: t.float64().default(0),
     classId: t.string().default(''),
     ships: t.array('string'),
+    ready: t.boolean().default(false),
   },
   'PartyMember',
 );
@@ -19,6 +20,8 @@ export const PartyState = schema(
     leaderId: t.string().default(''),
     inviteCode: t.string().default(''),
     selectedShipId: t.string().default(''),
+    revision: t.float64().default(1),
+    confirmedRevision: t.float64().default(0),
     members: t.map(PartyMemberState),
   },
   'PartyState',

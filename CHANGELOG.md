@@ -14,6 +14,7 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 - Inventário persistente: carteira com 200 créditos iniciais, licença da Batedora, stash de 40 espaços com pilhas pelo catálogo e caixa de recebimento para o excedente; painel de inventário no menu; `pnpm db:seed-dev` para dados de teste.
 - União das naves da party: cada membro traz as próprias licenças, o líder escolhe entre elas e a escolha é desfeita quando sai o último dono; nova nave Cargueira no catálogo.
 - Loadout da próxima missão: arma principal, arma secundária, ferramenta e mochila de 8 espaços, escolhidos do próprio stash e conferidos no servidor (dono, espaço e classe), sem mexer no stash.
+- Prontidão da party: cada membro fica pronto na revisão atual, qualquer mudança relevante desfaz a prontidão de todos e o líder confirma o roster quando todos estão prontos.
 
 ### Corrigido
 

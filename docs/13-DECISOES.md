@@ -33,6 +33,7 @@
 | D27 | Pacote inicial de 200 créditos e licença da Batedora; stash de 40 espaços; catálogo inicial de 6 itens | Proposta (0.2) | Balanceamento da economia e loja (0.8) |
 | D28 | A party usa a união das licenças de nave dos membros atuais; só o líder escolhe; segunda nave do catálogo (Cargueira) para validar a união | Proposta (0.2) | Licenças compradas na loja (0.8) |
 | D29 | Loadout com 3 espaços de equipamento (principal, secundária, ferramenta) e mochila de 8; escolher não move nem reserva itens até a 0.3; restrição de classe só ao equipar | Proposta (0.2) | Reserva de partida (0.3) e loadout completo (0.8) |
+| D30 | Prontidão por revisão da party: qualquer mudança relevante (roster, queda, classe, nave, loadout) tira a prontidão de todos; confirmação do líder congela o roster da revisão | Proposta (0.2) | Início da missão e reserva de itens (0.3) |
 
 Quando modificar uma decisão, registrar motivação, nova regra e documentos/tarefas afetados. Não alterar silenciosamente números centrais como velocidade de boost ou elegibilidade de extração.
 

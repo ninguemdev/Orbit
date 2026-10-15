@@ -11,6 +11,7 @@ import { isOriginAllowed } from './transport/access-policy';
 import { defineDevSectorRoom } from './transport/dev-sector-room';
 import { createAccountApi } from './transport/http/account-routes';
 import { type ClassPreferences, definePartyRoom } from './transport/party-room';
+import { LoadoutService } from './modules/loadout/loadout-service';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -41,6 +42,10 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
       ? { codeGuessesPerAddress: services.codeGuessesPerAddress }
       : {}),
   });
+  // Loadout saves drop the readiness of the saver's party.
+  const loadouts = services.db
+    ? new LoadoutService(services.db, (accountId) => directory.preparationChanged(accountId))
+    : undefined;
   const server = new Server({
     greet: false,
     transport: new WebSocketTransport({
@@ -61,6 +66,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
                 identity,
                 party,
                 ...(services.db ? { db: services.db } : {}),
+                ...(loadouts ? { loadouts } : {}),
                 access: policy,
                 cookie: { secure: config.cookieSecure },
               }),
@@ -83,6 +89,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
       tickets,
       directory,
       ...(services.classPreferences ? { classPreferences: services.classPreferences } : {}),
+      ...(loadouts ? { loadouts } : {}),
     }),
   );
   return server;

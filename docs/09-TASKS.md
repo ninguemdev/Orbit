@@ -229,7 +229,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V02.09 — Controlar prontidão e revisão da preparação
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 15/10/2026
 
 **Área:** server/ui. **Tamanho:** M. **Depende de:** V02.07, V02.08.
 

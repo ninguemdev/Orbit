@@ -162,4 +162,36 @@ test('four players choose classes and everyone sees the current roster', async (
   const last = players[3];
   if (!last) throw new Error('jogador ausente');
   await expect(last.page.getByRole('radio', { name: /^Oficial/ })).toBeChecked();
+
+  await test.step('everyone gets ready and the leader confirms the roster', async () => {
+    const confirm = leader.page.getByRole('button', { name: 'Confirmar preparação' });
+    await expect(confirm).toBeDisabled();
+    for (const { page } of players) {
+      await page.getByRole('button', { name: 'Estou pronto' }).click();
+      await expect(page.getByRole('button', { name: 'Não estou pronto' })).toBeVisible();
+    }
+    for (const { page } of players) {
+      for (const player of players) {
+        await expect(page.getByTestId('party-members')).toContainText(`${player.nick} (`);
+      }
+      await expect(
+        page.getByTestId('party-members').locator('li', { hasText: '— pronto' }),
+      ).toHaveCount(4);
+    }
+    await confirm.click();
+    for (const { page } of players) {
+      await expect(page.getByTestId('party-confirmed')).toHaveText(
+        'Preparação confirmada pelo líder.',
+      );
+    }
+  });
+
+  await test.step('a class change undoes readiness and the confirmation for everyone', async () => {
+    await choose(1, 'Médico');
+    for (const { page } of players) {
+      await expect(page.getByTestId('party-confirmed')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Estou pronto' })).toBeVisible();
+    }
+    await expect(leader.page.getByRole('button', { name: 'Confirmar preparação' })).toBeDisabled();
+  });
 });

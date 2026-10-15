@@ -198,8 +198,11 @@ test('two browsers share the room, walk, and see the same ship being piloted', a
     });
     await expect(bravo.getByTestId('hud')).not.toContainText('reconectando', { timeout: 10_000 });
     expect(await sessionId(alfa)).toBe(alfaId);
-    const before = (await world(bravo)).crew[alfaId];
-    await hold(alfa, 'KeyA', 300);
+    // Measured once both views settled: right after reconnecting, the last movement may
+    // still be arriving.
+    const [settledBefore] = await settled(alfa, bravo);
+    const before = settledBefore.crew[alfaId];
+    await hold(alfa, 'KeyA', 500);
     const [a, b] = await settled(alfa, bravo);
     expect(a.crew[alfaId]?.x).toBeLessThan(before?.x ?? -Infinity);
     expect(b.crew[alfaId]).toEqual(a.crew[alfaId]);

@@ -28,6 +28,10 @@ export interface PartyControls {
   selectClass(classId: string): void;
   /** Leader only; the server checks that a member holds the license. */
   selectShip(shipId: string): void;
+  /** Names the revision on screen; the server refuses it if the party changed. */
+  setReady(revision: number, ready: boolean): void;
+  /** Leader only: freezes the roster of that revision. */
+  confirm(revision: number): void;
   leaveParty(): Promise<void>;
   reclaim(): Promise<void>;
 }
@@ -42,6 +46,12 @@ const REFUSAL_TEXT: Record<string, string> = {
   unknown_class: 'Classe desconhecida.',
   ship_unavailable: 'Nenhum membro da party tem licença dessa nave.',
   class_not_saved: 'Não foi possível salvar a classe. Tente de novo.',
+  stale_revision: 'A party mudou. Confira e tente de novo.',
+  preparation_unavailable: 'Não foi possível conferir os loadouts agora. Tente de novo.',
+  class_missing: 'Escolha uma classe antes de ficar pronto.',
+  loadout_invalid: 'Seu loadout tem itens que não valem para a sua classe. Corrija e salve.',
+  ship_missing: 'Escolha a nave antes de confirmar.',
+  members_not_ready: 'Todos precisam estar conectados e prontos.',
 };
 
 type OpenOutcome = { ok: true } | { ok: false; code: ClientErrorCode | 'join_failed' | 'stale' };
@@ -213,6 +223,8 @@ export function useParty(signedIn: boolean): PartyControls {
     promote: (accountId) => current.current?.promote(accountId),
     selectClass: (classId) => current.current?.selectClass(classId),
     selectShip: (shipId) => current.current?.selectShip(shipId),
+    setReady: (revision, ready) => current.current?.setReady(revision, ready),
+    confirm: (revision) => current.current?.confirm(revision),
     leaveParty: async () => {
       await run({ intent: 'create' });
     },
