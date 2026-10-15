@@ -95,7 +95,7 @@ Executados e verificados no Windows 11 com Node 24.18.0 e pnpm 12.9.1, e no CI (
 | `pnpm db:smoke` | Cria um banco descartável, migra duas vezes, confere o schema e as conexões encerradas |
 | `pnpm build && pnpm e2e` | Teste multiplayer com dois navegadores sobre o build de produção |
 
-Copie `.env.example` para `.env` antes de usar os comandos de banco. O `pnpm e2e` usa as portas 2567 e 4173; encerre o `pnpm dev` antes. Na primeira vez, instale o navegador com `pnpm exec playwright install chromium`.
+Copie `.env.example` para `.env` antes de usar os comandos de banco. O `pnpm e2e` usa as portas 2567 a 2569 e 4173 (servidor, um proxy TCP que simula quedas de rede e o cliente); encerre o `pnpm dev` antes. Na primeira vez, instale o navegador com `pnpm exec playwright install chromium`.
 
 ### Abrir duas sessões no protótipo
 
