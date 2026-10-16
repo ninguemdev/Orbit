@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { accountClient, describeAccountError } from '../network/account-client';
 
 interface RecoveryCodePanelProps {
@@ -6,11 +6,23 @@ interface RecoveryCodePanelProps {
   /** Shown right after sign-up, when generating a code is suggested. */
   readonly suggested: boolean;
   readonly onChange: () => void;
+  /** Told while a new code is on screen, so nothing navigates away from it. */
+  readonly onCodeShown?: (shown: boolean) => void;
 }
 
 /** Generates the optional recovery code and shows it exactly once. */
-export function RecoveryCodePanel({ hasCode, suggested, onChange }: RecoveryCodePanelProps) {
+export function RecoveryCodePanel({
+  hasCode,
+  suggested,
+  onChange,
+  onCodeShown,
+}: RecoveryCodePanelProps) {
   const [code, setCode] = useState<string | null>(null);
+  const shown = code !== null;
+  useEffect(() => {
+    onCodeShown?.(shown);
+    return () => onCodeShown?.(false);
+  }, [shown, onCodeShown]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 

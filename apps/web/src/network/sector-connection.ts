@@ -5,6 +5,7 @@ import {
   DEV_ROOM_NAME,
   INPUT_SEND_RATE_HZ,
   INTERPOLATION_DELAY_MS,
+  RoomPhase,
   type MissionTicketResponse,
   PROTOCOL_VERSION,
   ServerMessage,
@@ -118,6 +119,12 @@ export class SectorConnection implements SectorBridge {
     const client = new Client(endpoint);
     client.auth.token = issued.ticket;
     const room = await client.joinById<SectorStateView>(issued.roomId);
+    // Before the match starts the server frees a dropped seat at once: retrying the
+    // old one would only burn the deadline. The menu offers a new entry instead.
+    room.reconnection.enabled = false;
+    room.onStateChange((state) => {
+      if (state.phase === RoomPhase.Active) room.reconnection.enabled = true;
+    });
     return new SectorConnection(room);
   }
 

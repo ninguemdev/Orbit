@@ -56,3 +56,27 @@ test('a member whose loading failed enters the mission again before the deadline
     }
   });
 });
+
+test('a member waiting in the test room is taken into the mission', async ({ browser }) => {
+  const alfa = await signUpInNewContext(browser, 'Sala_A');
+  const bravo = await signUpInNewContext(browser, 'Sala_B');
+  const code = (await alfa.page.getByTestId('party-code').textContent()) ?? '';
+  await bravo.page.getByLabel('Entrar em outra party (código)').fill(code);
+  await bravo.page.getByRole('button', { name: 'Entrar', exact: true }).click();
+  await expect(alfa.page.getByRole('heading', { name: 'Sua party (2/4)' })).toBeVisible();
+  await chooseClass(alfa.page, 'Piloto');
+  await chooseClass(bravo.page, 'Médico');
+  await getReady(alfa.page);
+  await getReady(bravo.page);
+
+  // Bravo waits in the shared test room of 0.1, still in the party.
+  await bravo.page.getByRole('button', { name: 'Entrar na sala' }).click();
+  await expect(bravo.page.getByRole('button', { name: 'Sair', exact: true })).toBeVisible();
+  await alfa.page.getByRole('button', { name: 'Confirmar preparação' }).click();
+
+  for (const { page } of [alfa, bravo]) {
+    await expect(page.getByRole('button', { name: 'Sair da missão' })).toBeVisible();
+    await expect(page.getByTestId('hud')).toContainText(alfa.nick);
+    await expect(page.getByTestId('hud')).toContainText(bravo.nick);
+  }
+});

@@ -193,6 +193,17 @@ describe('mission room', () => {
     expect(ended).toHaveLength(0);
     expect(leaderParty.state.expeditionId).toBe(expeditionId);
     expect((await getActiveExpedition(api.db, guest.id))?.state).toBe('ACTIVE');
+    // Who joins the party during the match is not part of it.
+    const latecomer = await party.player();
+    const lateRoom = await party.enter(latecomer, {
+      intent: 'join',
+      inviteCode: leaderParty.state.inviteCode,
+    });
+    await waitFor(() => lateRoom.state.expeditionState === 'ACTIVE', 'recém-chegado vê a partida');
+    const memberIds: string[] = [];
+    lateRoom.state.expeditionMemberIds.forEach((id) => memberIds.push(id));
+    expect(memberIds.sort()).toEqual([leader.id, guest.id].sort());
+    expect((await mission.ticketFor(latecomer)).status).toBe(404);
     // Recovery of the same process leaves its own match alone.
     expect((await api.expeditions.recover()).running).toBe(0);
     expect((await getActiveExpedition(api.db, guest.id))?.state).toBe('ACTIVE');

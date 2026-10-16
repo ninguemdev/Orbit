@@ -20,11 +20,21 @@ type Screen =
   | { kind: 'loading'; error?: string }
   | { kind: 'access'; notice?: string }
   | { kind: 'home'; me: MeResponse; suggestRecovery: boolean; error?: string }
-  | { kind: 'connecting'; me: MeResponse }
+  | { kind: 'connecting'; me: MeResponse; target: 'dev' | 'mission' }
   /** In a sector: the development room of 0.1, or the mission room of an expedition. */
   | { kind: 'playing'; me: MeResponse; connection: SectorConnection; mission: boolean };
 
 const ECONOMY_KEY = 'orbit.economy';
+
+/** Why the mission room refused the entry, in words the player can act on. */
+function missionJoinError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (message.includes('already_in_mission')) {
+    return 'Sua conta já está nesta missão, em outra janela ou reconectando. Aguarde alguns segundos e tente de novo.';
+  }
+  if (message.includes('mission_ended')) return 'Essa missão já terminou.';
+  return 'Não foi possível entrar na missão. Tente de novo antes de o prazo acabar.';
+}
 
 function readEconomyPreference(): boolean {
   try {
@@ -103,7 +113,7 @@ export function App() {
 
   const join = async (me: MeResponse) => {
     const attempt = ++joinAttempt.current;
-    setScreen({ kind: 'connecting', me });
+    setScreen({ kind: 'connecting', me, target: 'dev' });
     try {
       const connection = await SectorConnection.join(defaultServerEndpoint(), me.account.nick);
       if (attempt !== joinAttempt.current) {
@@ -122,17 +132,29 @@ export function App() {
     }
   };
 
-  /** Enters the mission room of the party's expedition with a fresh ticket. */
-  const enterMission = useCallback(async (me: MeResponse) => {
+  /**
+   * Enters the mission room of the party's expedition with a fresh ticket, leaving the
+   * development room first if the player is in it.
+   */
+  const enterMission = useCallback(async (me: MeResponse, previous?: SectorConnection) => {
     const attempt = ++joinAttempt.current;
-    setScreen({ kind: 'connecting', me });
+    setScreen({ kind: 'connecting', me, target: 'mission' });
+    if (previous) await previous.leave().catch(() => undefined);
     const fail = (error: string) => {
       if (attempt === joinAttempt.current) {
         setScreen({ kind: 'home', me, suggestRecovery: false, error });
       }
     };
     const issued = await accountClient.missionTicket();
-    if (!issued.ok) return fail(describeAccountError(issued.code));
+    if (!issued.ok) {
+      if (issued.code === 'unauthenticated') {
+        if (attempt === joinAttempt.current) {
+          setScreen({ kind: 'access', notice: describeAccountError(issued.code) });
+        }
+        return;
+      }
+      return fail(describeAccountError(issued.code));
+    }
     try {
       const connection = await SectorConnection.joinMission(defaultServerEndpoint(), issued.data);
       if (attempt !== joinAttempt.current) {
@@ -140,21 +162,34 @@ export function App() {
         return;
       }
       setScreen({ kind: 'playing', me, connection, mission: true });
-    } catch {
-      fail('Não foi possível entrar na missão. Tente de novo antes de o prazo acabar.');
+    } catch (error) {
+      fail(missionJoinError(error));
     }
   }, []);
 
-  // The confirmation reserved the loadouts: everyone loads into the match on their own.
-  // Each expedition is entered automatically once; afterwards the panel offers a button.
+  // The confirmation reserved the loadouts: every member of the expedition loads into
+  // the match on their own, from the menu or from the development room. Each
+  // expedition is entered automatically once; afterwards the panel offers a button.
+  // A recovery code still on screen is never thrown away by this.
   const autoEntered = useRef<string | null>(null);
-  const expeditionId = party.view?.expedition?.id ?? null;
-  const homeAs = screen.kind === 'home' ? screen.me : null;
+  const [recoveryCodeShown, setRecoveryCodeShown] = useState(false);
+  const expedition = party.view?.expedition ?? null;
+  const myExpedition =
+    screen.kind !== 'loading' && screen.kind !== 'access' && expedition
+      ? expedition.memberIds.includes(screen.me.account.id)
+        ? expedition.id
+        : null
+      : null;
   useEffect(() => {
-    if (!homeAs || !expeditionId || autoEntered.current === expeditionId) return;
-    autoEntered.current = expeditionId;
-    void enterMission(homeAs);
-  }, [homeAs, expeditionId, enterMission]);
+    if (!myExpedition || autoEntered.current === myExpedition) return;
+    if (screen.kind === 'home' && !recoveryCodeShown) {
+      autoEntered.current = myExpedition;
+      void enterMission(screen.me);
+    } else if (screen.kind === 'playing' && !screen.mission) {
+      autoEntered.current = myExpedition;
+      void enterMission(screen.me, screen.connection);
+    }
+  }, [screen, myExpedition, recoveryCodeShown, enterMission]);
 
   const connection = screen.kind === 'playing' ? screen.connection : null;
   const playingAs = screen.kind === 'playing' ? screen.me : null;
@@ -278,6 +313,7 @@ export function App() {
                   hasCode={me.hasRecoveryCode}
                   suggested={screen.suggestRecovery}
                   onChange={() => void refreshMe()}
+                  onCodeShown={setRecoveryCodeShown}
                 />
               ) : null}
             </div>
@@ -285,7 +321,7 @@ export function App() {
               <MissionSetupPanel
                 party={party}
                 myAccountId={me.account.id}
-                entering={screen.kind === 'connecting'}
+                entering={screen.kind === 'connecting' && screen.target === 'mission'}
                 onEnterMission={() => void enterMission(me)}
               />
             </div>

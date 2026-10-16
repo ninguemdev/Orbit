@@ -25,6 +25,7 @@ export const PartyState = schema(
     expeditionId: t.string().default(''),
     expeditionState: t.string().default(''),
     prepareSecondsLeft: t.uint16().default(0),
+    expeditionMemberIds: t.array('string'),
     members: t.map(PartyMemberState),
   },
   'PartyState',

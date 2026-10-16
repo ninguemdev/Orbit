@@ -1,15 +1,15 @@
 import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER } from '@orbit/catalog';
 import type { PartyPanelProps } from './PartyPanel';
-import type { PartyControls } from './use-party';
+import type { PartyView } from '../network/party-connection';
 import { shipName } from './catalog-names';
 
-/** Ship, class and readiness of the party's next mission. */
 interface MissionSetupPanelProps extends PartyPanelProps {
   /** A mission entry is in progress. */
   readonly entering: boolean;
   readonly onEnterMission: () => void;
 }
 
+/** Ship, class and readiness of the party's next mission. */
 export function MissionSetupPanel({
   party,
   myAccountId,
@@ -28,6 +28,8 @@ export function MissionSetupPanel({
     );
   }
   const isLeader = view.leaderId === myAccountId;
+  // While the party's match runs, nothing else can be confirmed.
+  const running = view.expedition?.state === 'ACTIVE';
   const me = view.members.find((member) => member.accountId === myAccountId);
   const myClass = me?.classId ?? '';
   // Before the first state sync there is no revision to name.
@@ -106,42 +108,57 @@ export function MissionSetupPanel({
         ) : null}
         <MissionStatus
           expedition={view.expedition}
+          myAccountId={myAccountId}
           entering={entering}
           onEnterMission={onEnterMission}
         />
-        <button
-          type="button"
-          onClick={() => party.setReady(view.revision, !me?.ready)}
-          disabled={!me || !synced}
-        >
-          {me?.ready ? 'Não estou pronto' : 'Estou pronto'}
-        </button>{' '}
-        {isLeader ? (
-          <button
-            type="button"
-            disabled={!synced || !allReady || !view.selectedShipId}
-            onClick={() => party.confirm(view.revision)}
-          >
-            Confirmar preparação
-          </button>
-        ) : null}
+        {running ? null : (
+          <>
+            <button
+              type="button"
+              onClick={() => party.setReady(view.revision, !me?.ready)}
+              disabled={!me || !synced}
+            >
+              {me?.ready ? 'Não estou pronto' : 'Estou pronto'}
+            </button>{' '}
+            {isLeader ? (
+              <button
+                type="button"
+                disabled={!synced || !allReady || !view.selectedShipId}
+                onClick={() => party.confirm(view.revision)}
+              >
+                Confirmar preparação
+              </button>
+            ) : null}
+          </>
+        )}
       </fieldset>
     </section>
   );
 }
 
 interface MissionStatusProps {
-  readonly expedition: NonNullable<PartyControls['view']>['expedition'];
+  readonly expedition: PartyView['expedition'];
+  readonly myAccountId: string;
   readonly entering: boolean;
   readonly onEnterMission: () => void;
 }
 
 /**
  * The reserved expedition: loading into the match (everyone must enter before the
- * countdown ends) or the match already running. Entering again is always offered.
+ * countdown ends) or the match already running. Its members can always enter again;
+ * who joined the party later only sees that the others are away.
  */
-function MissionStatus({ expedition, entering, onEnterMission }: MissionStatusProps) {
+function MissionStatus({ expedition, myAccountId, entering, onEnterMission }: MissionStatusProps) {
   if (!expedition) return null;
+  if (!expedition.memberIds.includes(myAccountId)) {
+    return (
+      <p className="notice" data-testid="expedition-preparing">
+        A party está numa missão que começou antes de você entrar. A próxima missão pode ser
+        preparada quando ela terminar.
+      </p>
+    );
+  }
   return (
     <div className="mission-status">
       <p className="notice" data-testid="expedition-preparing">

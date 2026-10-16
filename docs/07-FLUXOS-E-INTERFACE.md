@@ -22,7 +22,7 @@ Mostrar por que a nave está disponível: “Liberada por: nick”. Isso comunic
 
 Não permitir início quando um membro tem estado inválido, item reservado em outra partida ou escolha incompatível. O servidor confirma a revisão; o botão desativado no cliente é apenas uma ajuda visual.
 
-Depois da confirmação (V03.02), cada cliente pede um ticket de missão e entra sozinho na sala da missão; a tela do jogo abre com o HUD e o botão **Sair da missão**. Se a entrada falha, o menu mostra o erro e o botão **Entrar na missão** tenta de novo enquanto houver prazo; com a partida em andamento, o mesmo botão leva de volta à tripulação. O cancelamento por prazo ou mudança da party e o fim da partida aparecem como aviso da party.
+Depois da confirmação (V03.02), cada membro da expedição pede um ticket de missão e entra sozinho na sala da missão, a partir do menu ou da sala de testes; a tela do jogo abre com o HUD e o botão **Sair da missão**. A entrada automática espera enquanto um código de recuperação novo estiver na tela, e uma sessão vencida leva ao login. Antes da partida começar, uma queda volta ao menu na hora (sem tentar reconectar a um lugar que o servidor já liberou); depois, vale a reconexão normal. Quem entrou na party depois da partida começar vê que ela está em andamento, sem botão de entrar, e a prontidão só volta quando ela termina. Se a entrada falha, o menu mostra o erro e o botão **Entrar na missão** tenta de novo enquanto houver prazo; com a partida em andamento, o mesmo botão leva de volta à tripulação. O cancelamento por prazo ou mudança da party e o fim da partida aparecem como aviso da party.
 
 ## Durante a missão
 

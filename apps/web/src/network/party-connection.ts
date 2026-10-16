@@ -40,6 +40,8 @@ export interface PartyView {
     /** Loading into the match, or the match is running. */
     readonly state: 'PREPARING' | 'ACTIVE';
     readonly secondsLeft: number;
+    /** Accounts in the expedition; who joined the party later is not among them. */
+    readonly memberIds: readonly string[];
   } | null;
   /** Ordered by arrival. */
   readonly members: readonly PartyMember[];
@@ -144,10 +146,11 @@ export class PartyConnection {
   }
 }
 
-function shipsOf(list: PartyMemberView['ships'] | undefined): string[] {
-  const ships: string[] = [];
-  list?.forEach((shipId) => ships.push(shipId));
-  return ships;
+/** Copies a synchronized list of strings (ships, expedition members). */
+function stringsOf(list: PartyMemberView['ships'] | undefined): string[] {
+  const values: string[] = [];
+  list?.forEach((value) => values.push(value));
+  return values;
 }
 
 function toView(state: PartyStateView): PartyView {
@@ -159,7 +162,7 @@ function toView(state: PartyStateView): PartyView {
         nick: member.nick,
         connected: member.connected,
         classId: member.classId,
-        ships: shipsOf(member.ships),
+        ships: stringsOf(member.ships),
         ready: member.ready,
       },
       joinedAt: member.joinedAt,
@@ -179,6 +182,7 @@ function toView(state: PartyStateView): PartyView {
             id: state.expeditionId,
             state: state.expeditionState,
             secondsLeft: state.prepareSecondsLeft ?? 0,
+            memberIds: stringsOf(state.expeditionMemberIds),
           }
         : null,
     members: members.map((entry) => entry.member),
