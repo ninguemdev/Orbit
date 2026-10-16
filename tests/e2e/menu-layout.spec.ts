@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { signUpInNewContext } from './support/accounts';
+import { signUpInNewContext, closeOpenContexts } from './support/accounts';
+
+test.afterEach(closeOpenContexts);
 
 test('the menu spreads into columns on a 16:9 window and scrolls when it does not fit', async ({
   browser,

@@ -1,9 +1,21 @@
 import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER } from '@orbit/catalog';
 import type { PartyPanelProps } from './PartyPanel';
+import type { PartyView } from '../network/party-connection';
 import { shipName } from './catalog-names';
 
+interface MissionSetupPanelProps extends PartyPanelProps {
+  /** A mission entry is in progress. */
+  readonly entering: boolean;
+  readonly onEnterMission: () => void;
+}
+
 /** Ship, class and readiness of the party's next mission. */
-export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
+export function MissionSetupPanel({
+  party,
+  myAccountId,
+  entering,
+  onEnterMission,
+}: MissionSetupPanelProps) {
   const { view } = party;
   if (!view) {
     return (
@@ -16,6 +28,8 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
     );
   }
   const isLeader = view.leaderId === myAccountId;
+  // While the party's match runs, nothing else can be confirmed.
+  const running = view.expedition?.state === 'ACTIVE';
   const me = view.members.find((member) => member.accountId === myAccountId);
   const myClass = me?.classId ?? '';
   // Before the first state sync there is no revision to name.
@@ -92,37 +106,69 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
             Preparação confirmada pelo líder.
           </p>
         ) : null}
-        {view.expedition ? <PreparationStatus secondsLeft={view.expedition.secondsLeft} /> : null}
-        <button
-          type="button"
-          onClick={() => party.setReady(view.revision, !me?.ready)}
-          disabled={!me || !synced}
-        >
-          {me?.ready ? 'Não estou pronto' : 'Estou pronto'}
-        </button>{' '}
-        {isLeader ? (
-          <button
-            type="button"
-            disabled={!synced || !allReady || !view.selectedShipId}
-            onClick={() => party.confirm(view.revision)}
-          >
-            Confirmar preparação
-          </button>
-        ) : null}
+        <MissionStatus
+          expedition={view.expedition}
+          myAccountId={myAccountId}
+          entering={entering}
+          onEnterMission={onEnterMission}
+        />
+        {running ? null : (
+          <>
+            <button
+              type="button"
+              onClick={() => party.setReady(view.revision, !me?.ready)}
+              disabled={!me || !synced}
+            >
+              {me?.ready ? 'Não estou pronto' : 'Estou pronto'}
+            </button>{' '}
+            {isLeader ? (
+              <button
+                type="button"
+                disabled={!synced || !allReady || !view.selectedShipId}
+                onClick={() => party.confirm(view.revision)}
+              >
+                Confirmar preparação
+              </button>
+            ) : null}
+          </>
+        )}
       </fieldset>
     </section>
   );
 }
 
+interface MissionStatusProps {
+  readonly expedition: PartyView['expedition'];
+  readonly myAccountId: string;
+  readonly entering: boolean;
+  readonly onEnterMission: () => void;
+}
+
 /**
- * Reserved items waiting for the match. The match room arrives in the next step of
- * 0.3; until then the server cancels the preparation when its countdown ends.
+ * The reserved expedition: loading into the match (everyone must enter before the
+ * countdown ends) or the match already running. Its members can always enter again;
+ * who joined the party later only sees that the others are away.
  */
-function PreparationStatus({ secondsLeft }: { secondsLeft: number }) {
+function MissionStatus({ expedition, myAccountId, entering, onEnterMission }: MissionStatusProps) {
+  if (!expedition) return null;
+  if (!expedition.memberIds.includes(myAccountId)) {
+    return (
+      <p className="notice" data-testid="expedition-preparing">
+        A party está numa missão que começou antes de você entrar. A próxima missão pode ser
+        preparada quando ela terminar.
+      </p>
+    );
+  }
   return (
-    <p className="notice" data-testid="expedition-preparing">
-      Itens reservados para a missão. A partida com a party ainda não abre nesta versão: a
-      preparação expira em {secondsLeft} s e os itens voltam ao stash.
-    </p>
+    <div className="mission-status">
+      <p className="notice" data-testid="expedition-preparing">
+        {expedition.state === 'ACTIVE'
+          ? 'Missão em andamento. Volte para a sua tripulação.'
+          : `Itens reservados. Entrando na missão: se alguém não entrar em ${expedition.secondsLeft} s, a preparação é cancelada e os itens voltam ao stash.`}
+      </p>
+      <button type="button" disabled={entering} onClick={onEnterMission}>
+        {entering ? 'Entrando…' : 'Entrar na missão'}
+      </button>
+    </div>
   );
 }

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { seedDev, signUpInNewContext } from './support/accounts';
+import { seedDev, signUpInNewContext, closeOpenContexts } from './support/accounts';
+
+test.afterEach(closeOpenContexts);
 
 test('forms a party by code and by invite, and hands over leadership', async ({ browser }) => {
   const alfa = await signUpInNewContext(browser, 'Lider');
@@ -163,35 +165,45 @@ test('four players choose classes and everyone sees the current roster', async (
   if (!last) throw new Error('jogador ausente');
   await expect(last.page.getByRole('radio', { name: /^Oficial/ })).toBeChecked();
 
-  await test.step('everyone gets ready and the leader confirms the roster', async () => {
-    const confirm = leader.page.getByRole('button', { name: 'Confirmar preparação' });
-    await expect(confirm).toBeDisabled();
+  const readyAll = async () => {
     for (const { page } of players) {
-      await page.getByRole('button', { name: 'Estou pronto' }).click();
-      await expect(page.getByRole('button', { name: 'Não estou pronto' })).toBeVisible();
+      // A click right after a change can name the previous revision; click again.
+      await expect(async () => {
+        await page.getByRole('button', { name: 'Estou pronto' }).click();
+        await expect(page.getByRole('button', { name: 'Não estou pronto' })).toBeVisible({
+          timeout: 1000,
+        });
+      }).toPass();
     }
     for (const { page } of players) {
-      for (const player of players) {
-        await expect(page.getByTestId('party-members')).toContainText(`${player.nick} (`);
-      }
       await expect(
         page.getByTestId('party-members').locator('li', { hasText: '— pronto' }),
       ).toHaveCount(4);
     }
-    await confirm.click();
-    for (const { page } of players) {
-      await expect(page.getByTestId('party-confirmed')).toHaveText(
-        'Preparação confirmada pelo líder.',
-      );
-    }
-  });
+  };
+  const confirm = leader.page.getByRole('button', { name: 'Confirmar preparação' });
 
-  await test.step('a class change undoes readiness and the confirmation for everyone', async () => {
+  await test.step('a class change undoes readiness for everyone', async () => {
+    await expect(confirm).toBeDisabled();
+    await readyAll();
+    await expect(confirm).toBeEnabled();
     await choose(1, 'Médico');
     for (const { page } of players) {
-      await expect(page.getByTestId('party-confirmed')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Estou pronto' })).toBeVisible();
     }
-    await expect(leader.page.getByRole('button', { name: 'Confirmar preparação' })).toBeDisabled();
+    await expect(confirm).toBeDisabled();
+  });
+
+  await test.step('everyone gets ready, the leader confirms and all four enter the mission', async () => {
+    await readyAll();
+    await confirm.click();
+    for (const { page } of players) {
+      await expect(page.getByTestId('game').locator('canvas')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Sair da missão' })).toBeVisible();
+    }
+    for (const { page } of players) {
+      for (const player of players)
+        await expect(page.getByTestId('hud')).toContainText(player.nick);
+    }
   });
 });

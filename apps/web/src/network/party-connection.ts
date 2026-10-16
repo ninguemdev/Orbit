@@ -35,7 +35,14 @@ export interface PartyView {
   /** Revision the leader confirmed; 0 when there is no valid confirmation. */
   readonly confirmedRevision: number;
   /** Expedition reserved by the confirmation, while it waits for the match. */
-  readonly expedition: { readonly id: string; readonly secondsLeft: number } | null;
+  readonly expedition: {
+    readonly id: string;
+    /** Loading into the match, or the match is running. */
+    readonly state: 'PREPARING' | 'ACTIVE';
+    readonly secondsLeft: number;
+    /** Accounts in the expedition; who joined the party later is not among them. */
+    readonly memberIds: readonly string[];
+  } | null;
   /** Ordered by arrival. */
   readonly members: readonly PartyMember[];
 }
@@ -139,10 +146,11 @@ export class PartyConnection {
   }
 }
 
-function shipsOf(list: PartyMemberView['ships'] | undefined): string[] {
-  const ships: string[] = [];
-  list?.forEach((shipId) => ships.push(shipId));
-  return ships;
+/** Copies a synchronized list of strings (ships, expedition members). */
+function stringsOf(list: PartyMemberView['ships'] | undefined): string[] {
+  const values: string[] = [];
+  list?.forEach((value) => values.push(value));
+  return values;
 }
 
 function toView(state: PartyStateView): PartyView {
@@ -154,7 +162,7 @@ function toView(state: PartyStateView): PartyView {
         nick: member.nick,
         connected: member.connected,
         classId: member.classId,
-        ships: shipsOf(member.ships),
+        ships: stringsOf(member.ships),
         ready: member.ready,
       },
       joinedAt: member.joinedAt,
@@ -168,8 +176,14 @@ function toView(state: PartyStateView): PartyView {
     revision: state.revision ?? 0,
     confirmedRevision: state.confirmedRevision ?? 0,
     expedition:
-      state.expeditionId && state.expeditionState === 'PREPARING'
-        ? { id: state.expeditionId, secondsLeft: state.prepareSecondsLeft ?? 0 }
+      state.expeditionId &&
+      (state.expeditionState === 'PREPARING' || state.expeditionState === 'ACTIVE')
+        ? {
+            id: state.expeditionId,
+            state: state.expeditionState,
+            secondsLeft: state.prepareSecondsLeft ?? 0,
+            memberIds: stringsOf(state.expeditionMemberIds),
+          }
         : null,
     members: members.map((entry) => entry.member),
   };

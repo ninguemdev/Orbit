@@ -431,6 +431,7 @@ export class PartyRoom
     readonly id: string;
     readonly revision: number;
     readonly deadline: number;
+    readonly memberIds: readonly string[];
   } | null = null;
   /** Revision whose expedition is being created right now. */
   #starting: number | null = null;
@@ -659,8 +660,10 @@ export class PartyRoom
       id: started.expeditionId,
       revision,
       deadline: started.prepareDeadline,
+      memberIds: proposal.members.map((member) => member.accountId),
     };
     this.state.expeditionId = started.expeditionId;
+    this.#setExpeditionMembers(this.#expedition.memberIds);
     this.state.expeditionState = 'PREPARING';
     this.#proposal = proposal;
     this.state.confirmedRevision = revision;
@@ -687,18 +690,19 @@ export class PartyRoom
   /** Every member loaded: the match belongs to the mission room from now on. */
   #missionStarted(expeditionId: string): void {
     if (this.#expedition?.id !== expeditionId) return;
-    this.#showRunning(expeditionId);
+    this.#showRunning(expeditionId, this.#expedition.memberIds);
   }
 
   /**
    * Detaches the party from a running match: readiness and confirmation start over
    * (a new revision), and the party shows the match until it ends.
    */
-  #showRunning(expeditionId: string): void {
+  #showRunning(expeditionId: string, memberIds: readonly string[]): void {
     this.#expedition = null;
     this.#stopCountdown();
     this.#changed();
     this.state.expeditionId = expeditionId;
+    this.#setExpeditionMembers(memberIds);
     this.state.expeditionState = 'ACTIVE';
     this.state.prepareSecondsLeft = 0;
   }
@@ -734,7 +738,7 @@ export class PartyRoom
       if (outcome === 'cancelled') this.#notifyExpeditionEnded(reason);
       // The match became active before the cancellation reached the database.
       else if (outcome === 'not_preparing' && !this.state.expeditionId) {
-        this.#showRunning(expedition.id);
+        this.#showRunning(expedition.id, expedition.memberIds);
       }
     });
   }
@@ -745,6 +749,12 @@ export class PartyRoom
     this.state.expeditionId = '';
     this.state.expeditionState = '';
     this.state.prepareSecondsLeft = 0;
+    this.state.expeditionMemberIds.clear();
+  }
+
+  #setExpeditionMembers(memberIds: readonly string[]): void {
+    this.state.expeditionMemberIds.clear();
+    for (const accountId of memberIds) this.state.expeditionMemberIds.push(accountId);
   }
 
   /** Resolves with the outcome once the database answered (`retrying` on failure). */

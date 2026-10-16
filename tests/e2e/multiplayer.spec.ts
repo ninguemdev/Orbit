@@ -1,6 +1,8 @@
 import { type Browser, type Page, expect, test } from '@playwright/test';
 import { dot, rotate, sub } from '../../packages/simulation/src/vec2';
-import { signUpInNewContext } from './support/accounts';
+import { signUpInNewContext, closeOpenContexts } from './support/accounts';
+
+test.afterEach(closeOpenContexts);
 
 interface CrewView {
   readonly id: string;

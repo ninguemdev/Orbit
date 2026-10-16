@@ -142,6 +142,11 @@ export interface PartyStateView {
   readonly expeditionState: string;
   /** Seconds before an unstarted preparation is cancelled, counted by the server. */
   readonly prepareSecondsLeft: number;
+  /** Accounts in the expedition; members who joined the party later are not in it. */
+  readonly expeditionMemberIds: {
+    forEach(cb: (accountId: string) => void): void;
+    readonly length: number;
+  };
   readonly members: {
     forEach(cb: (member: PartyMemberView, accountId: string) => void): void;
     readonly size: number;
