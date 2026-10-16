@@ -7,7 +7,7 @@ import { AccessScreen } from './AccessScreen';
 import { GameView } from './GameView';
 import { Hud } from './Hud';
 import { PreparationPanels } from './InventoryPanel';
-import { PartyPanel } from './PartyPanel';
+import { MissionSetupPanel, PartyPanel } from './PartyPanel';
 import { RecoveryCodePanel } from './RecoveryCodePanel';
 import { useParty } from './use-party';
 
@@ -183,53 +183,69 @@ export function App() {
     case 'connecting': {
       const { me } = screen;
       return (
-        <main className="menu">
-          <h1>Orbit</h1>
-          <p data-testid="signed-in-as">
-            Conectado como <strong>{me.account.nick}</strong>
-          </p>
-          <p>
+        <main className="home">
+          <header className="home-bar">
+            <h1>Orbit</h1>
+            <p data-testid="signed-in-as">
+              Conectado como <strong>{me.account.nick}</strong>
+            </p>
+            <label className="inline">
+              <input type="checkbox" checked={economy} onChange={toggleEconomy} /> Modo econômico
+              (30 FPS)
+            </label>
+            <div className="actions">
+              <button
+                type="button"
+                disabled={screen.kind === 'connecting'}
+                onClick={() => join(me)}
+              >
+                {screen.kind === 'connecting' ? 'Conectando…' : 'Entrar na sala'}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={screen.kind === 'connecting'}
+                onClick={() => void signOut(me)}
+              >
+                Sair da conta
+              </button>
+            </div>
+          </header>
+          <p className="hint">
             Prepare a próxima missão: forme a party, escolha classe, loadout e nave e confirme a
             prontidão. A missão com a party começa na 0.3; &quot;Entrar na sala&quot; abre a sala de
             testes da 0.1, compartilhada por todos e sem a sua party.
           </p>
-          <label className="inline">
-            <input type="checkbox" checked={economy} onChange={toggleEconomy} /> Modo econômico (30
-            FPS)
-          </label>
-          <div className="actions">
-            <button type="button" disabled={screen.kind === 'connecting'} onClick={() => join(me)}>
-              {screen.kind === 'connecting' ? 'Conectando…' : 'Entrar na sala'}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={screen.kind === 'connecting'}
-              onClick={() => void signOut(me)}
-            >
-              Sair da conta
-            </button>
-          </div>
           {screen.kind === 'home' && screen.error ? (
             <p role="alert" className="error">
               {screen.error}
             </p>
           ) : null}
-          <PartyPanel party={party} myAccountId={me.account.id} />
-          <PreparationPanels
-            classId={
-              party.view?.members.find((member) => member.accountId === me.account.id)?.classId ??
-              me.profile.classId ??
-              ''
-            }
-          />
-          {screen.kind === 'home' ? (
-            <RecoveryCodePanel
-              hasCode={me.hasRecoveryCode}
-              suggested={screen.suggestRecovery}
-              onChange={() => void refreshMe()}
-            />
-          ) : null}
+          <div className="home-columns">
+            <div className="home-column">
+              <PartyPanel party={party} myAccountId={me.account.id} />
+              {screen.kind === 'home' ? (
+                <RecoveryCodePanel
+                  hasCode={me.hasRecoveryCode}
+                  suggested={screen.suggestRecovery}
+                  onChange={() => void refreshMe()}
+                />
+              ) : null}
+            </div>
+            <div className="home-column">
+              <MissionSetupPanel party={party} myAccountId={me.account.id} />
+            </div>
+            <div className="home-column">
+              <PreparationPanels
+                classId={
+                  party.view?.members.find((member) => member.accountId === me.account.id)
+                    ?.classId ??
+                  me.profile.classId ??
+                  ''
+                }
+              />
+            </div>
+          </div>
         </main>
       );
     }

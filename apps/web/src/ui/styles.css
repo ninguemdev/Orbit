@@ -13,23 +13,119 @@ body,
   overflow: hidden;
 }
 
+/* The game canvas is fixed to the viewport; menus taller than the window scroll here. */
+#root {
+  overflow-y: auto;
+}
+
 .menu {
   max-width: 28rem;
   margin: 10vh auto;
   padding: 0 1rem;
 }
 
-.menu form {
+/* Main menu after sign-in: built for a 16:9 desktop window, one column per area. */
+.home {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 100%;
+  padding: 1rem 1.5rem 1.5rem;
+}
+
+.home-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #24314a;
+}
+
+.home-bar h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+}
+
+.home-bar p,
+.home > .hint,
+.home > .error {
+  margin: 0;
+}
+
+.home-bar .actions {
+  margin: 0 0 0 auto;
+}
+
+.home-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+
+.home-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* Tall enough windows keep the top bar in view and scroll each column on its own. */
+@media (min-width: 1000px) and (min-height: 560px) {
+  .home {
+    height: 100%;
+  }
+
+  .home-columns {
+    flex: 1;
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .home-column {
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 0.25rem;
+  }
+}
+
+@media (max-width: 999px) {
+  .home-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .home-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel {
+  padding: 0.75rem;
+  border: 1px solid #24314a;
+  border-radius: 6px;
+}
+
+.panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+:is(.menu, .home) form {
   display: grid;
   gap: 0.75rem;
 }
 
-.menu label {
+:is(.menu, .home) label {
   display: grid;
   gap: 0.25rem;
 }
 
-.menu label.inline {
+:is(.menu, .home) label.inline {
   display: block;
 }
 
@@ -38,7 +134,7 @@ button {
   font: inherit;
 }
 
-.menu input:not([type='checkbox']) {
+:is(.menu, .home) input:not([type='checkbox']) {
   padding: 0.5rem;
   border: 1px solid #34445e;
   border-radius: 4px;
@@ -136,30 +232,11 @@ button.secondary {
   background: transparent;
 }
 
-.recovery {
-  margin-top: 1.5rem;
-  padding: 0.75rem;
-  border: 1px solid #24314a;
-  border-radius: 6px;
-}
-
 .recovery .code {
   font-family: monospace;
   font-size: 1.1rem;
   letter-spacing: 0.05em;
   word-break: break-all;
-}
-
-.party {
-  margin-top: 1.5rem;
-  padding: 0.75rem;
-  border: 1px solid #24314a;
-  border-radius: 6px;
-}
-
-.party h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.1rem;
 }
 
 .party-members,
@@ -201,7 +278,7 @@ button.secondary {
   border-radius: 6px;
 }
 
-.menu label.class-option {
+.home label.class-option {
   grid-template-columns: auto 1fr;
   column-gap: 0.5rem;
   margin-top: 0.5rem;
@@ -209,18 +286,6 @@ button.secondary {
 
 .class-option .hint {
   grid-column: 2;
-}
-
-.inventory {
-  margin-top: 1.5rem;
-  padding: 0.75rem;
-  border: 1px solid #24314a;
-  border-radius: 6px;
-}
-
-.inventory h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.1rem;
 }
 
 .stash {

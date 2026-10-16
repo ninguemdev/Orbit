@@ -4,6 +4,8 @@
 
 Após autenticar, mostrar o personagem, créditos, stash, caixa de recebimento e party. Telas de preparo não executam simulação de setor. Party atualiza por eventos; inventário e compras usam respostas autenticadas da API.
 
+O menu é feito para janela de PC em 16:9: barra superior com a conta, o modo econômico e as ações, e três colunas abaixo (party e código de recuperação; nave, classe e prontidão; inventário e loadout). Em janela alta o bastante cada coluna rola sozinha e a barra fica visível; em janela menor as colunas se reduzem a duas ou uma e a página inteira rola.
+
 | Área | Ações e informações |
 | --- | --- |
 | Conta | Entrar/cadastrar com nick e senha, sair e recuperar com código opcional |

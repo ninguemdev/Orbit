@@ -160,7 +160,7 @@ export function LoadoutPanel({
   const serverClass = saved?.classId ?? null;
 
   return (
-    <section className="inventory" aria-label="Loadout" data-testid="loadout">
+    <section className="panel" aria-label="Loadout" data-testid="loadout">
       <h2>Loadout da próxima missão</h2>
       <p className="hint">
         Classe: {serverClass && isClassId(serverClass) ? CLASS_NAMES[serverClass] : 'não escolhida'}
