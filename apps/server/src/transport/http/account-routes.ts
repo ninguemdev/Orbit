@@ -192,11 +192,12 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
         const body: InventoryResponse = {
           credits: inventory.credits,
           stashCapacity: STASH_SLOTS,
-          stash: inventory.stash.map(({ slot, instanceId, itemId, quantity }) => ({
+          stash: inventory.stash.map(({ slot, instanceId, itemId, quantity, reserved }) => ({
             slot,
             instanceId,
             itemId,
             quantity,
+            reserved,
           })),
           inbox: inventory.inbox.map(({ entryId, itemId, quantity, reason }) => ({
             entryId,

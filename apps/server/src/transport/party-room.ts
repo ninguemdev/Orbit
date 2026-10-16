@@ -7,6 +7,7 @@ import {
   PARTY_RECONNECTION_SECONDS,
   PartyClientMessage,
   PartyErrorCode,
+  type ExpeditionEndedNotice,
   type PartyInviteNotice,
   type PartyRefusal,
   PartyServerMessage,
@@ -20,6 +21,8 @@ import {
 import { isClassId, isShipHullId } from '@orbit/catalog';
 import type { PartyDirectory, PartyRoomHandle } from '../modules/party/party-directory';
 import type { RoomTicket, RoomTicketStore } from '../modules/party/room-tickets';
+import { errorName } from '../infrastructure/error-name';
+import type { ExpeditionStarter } from '../modules/expedition/expedition-service';
 import { PartyMemberState, PartyState } from './party-schema';
 
 /** Remembers each account's class choice beyond the party (the profile in the database). */
@@ -55,6 +58,8 @@ export interface PartyRoomDeps {
   readonly classPreferences?: ClassPreferences;
   /** Without it (tests without a database) every loadout counts as empty and valid. */
   readonly loadouts?: LoadoutReader;
+  /** Reserves the confirmed loadouts; without it a confirmation only freezes the roster. */
+  readonly expeditions?: ExpeditionStarter;
   readonly now?: () => number;
 }
 
@@ -270,6 +275,10 @@ export class PartyRoom
 
   override onDispose(): void {
     this.#deps.directory.unregister(this);
+    // Nobody is left to start the match: the reserved items go back now.
+    const expedition = this.#expedition;
+    this.#clearExpedition();
+    if (expedition) void this.#cancelExpedition(expedition.id);
   }
 
   // PartyRoomHandle ------------------------------------------------------------
@@ -367,7 +376,10 @@ export class PartyRoom
     if (!this.#isLeader(client)) return this.#refuse(client, action, PartyErrorCode.NotLeader);
     if (!this.state.members.has(targetId))
       return this.#refuse(client, action, PartyErrorCode.NotMember);
+    if (this.state.leaderId === targetId) return;
     this.state.leaderId = targetId;
+    // The reserved expedition names its leader: a new leader confirms again.
+    if (this.#expedition) this.#changed();
   }
 
   #removeMember(accountId: string): void {
@@ -401,12 +413,22 @@ export class PartyRoom
   /** Pending class saves per account, chained so they finish in order. */
   readonly #classSaves = new Map<string, Promise<void>>();
   #proposal: PreparationProposal | null = null;
+  /** Expedition created by the confirmation of `revision`, while it waits to start. */
+  #expedition: {
+    readonly id: string;
+    readonly revision: number;
+    readonly deadline: number;
+  } | null = null;
+  /** Revision whose expedition is being created right now. */
+  #starting: number | null = null;
+  /** Cancellations not yet committed; a new start waits for them. */
+  readonly #pendingCancels = new Set<Promise<boolean>>();
+  #countdown: ReturnType<typeof setInterval> | null = null;
   /** Latest readiness request per member; older answers are dropped. */
   readonly #readyRequests = new Map<string, number>();
 
   #logFailure(what: string, error: unknown): void {
-    const name = error instanceof Error ? error.name : typeof error;
-    console.error(`[party] não foi possível ${what}: ${name}`);
+    console.error(`[party] não foi possível ${what}: ${errorName(error)}`);
   }
 
   // Preparation -----------------------------------------------------------------
@@ -416,6 +438,8 @@ export class PartyRoom
    * confirmation. Requests naming the previous revision will fail.
    */
   #changed(): void {
+    // The confirmed roster no longer holds: its preparation is cancelled.
+    if (this.#expedition) this.#endExpedition('party_changed');
     this.state.revision += 1;
     this.state.confirmedRevision = 0;
     this.#proposal = null;
@@ -443,6 +467,8 @@ export class PartyRoom
     const request = (this.#readyRequests.get(accountId) ?? 0) + 1;
     this.#readyRequests.set(accountId, request);
     if (!ready) {
+      // Leaving a reserved preparation cancels it for everyone (a new revision).
+      if (this.#expedition) return this.#changed();
       member.ready = false;
       // A confirmation needs everyone ready; it no longer holds.
       this.state.confirmedRevision = 0;
@@ -470,6 +496,28 @@ export class PartyRoom
     member.ready = true;
   }
 
+  /**
+   * Why the confirmation of `revision` with this roster no longer holds, if it does
+   * not: checked again after every wait, since anything may change meanwhile
+   * (leadership, someone no longer ready, which keeps the revision, or leaving).
+   */
+  #confirmationProblem(
+    client: PartyClient,
+    revision: number,
+    members: readonly PartyMemberState[],
+  ): PartyErrorCode | null {
+    if (revision !== this.state.revision) return PartyErrorCode.StaleRevision;
+    if (!this.#isLeader(client)) return PartyErrorCode.NotLeader;
+    const now = [...this.state.members.values()];
+    const sameRoster =
+      now.length === members.length && now.every((member, index) => member === members[index]);
+    if (!sameRoster) return PartyErrorCode.StaleRevision;
+    if (now.some((member) => !member.ready || !member.connected)) {
+      return PartyErrorCode.MembersNotReady;
+    }
+    return null;
+  }
+
   async #confirm(client: PartyClient, revision: number): Promise<void> {
     const action = PartyClientMessage.Confirm;
     if (!this.#isLeader(client)) return this.#refuse(client, action, PartyErrorCode.NotLeader);
@@ -482,6 +530,8 @@ export class PartyRoom
     if (members.some((member) => !member.ready || !member.connected)) {
       return this.#refuse(client, action, PartyErrorCode.MembersNotReady);
     }
+    // A repeated confirmation of the same revision changes nothing.
+    if (this.#expedition?.revision === revision || this.#starting === revision) return;
     // The loadouts are read again: the proposal records exactly what each member takes.
     let loadouts: (readonly PreparedItem[])[];
     try {
@@ -490,23 +540,12 @@ export class PartyRoom
       this.#logFailure('ler os loadouts', error);
       return this.#refuse(client, action, PartyErrorCode.PreparationUnavailable);
     }
-    // Everything checked before the read is checked again: leadership may have passed,
-    // someone may have stopped being ready (which keeps the revision), or left.
-    if (revision !== this.state.revision) {
-      return this.#refuse(client, action, PartyErrorCode.StaleRevision);
-    }
-    if (!this.#isLeader(client)) return this.#refuse(client, action, PartyErrorCode.NotLeader);
-    const now = [...this.state.members.values()];
-    const sameRoster =
-      now.length === members.length && now.every((member, index) => member === members[index]);
-    if (!sameRoster) return this.#refuse(client, action, PartyErrorCode.StaleRevision);
-    if (now.some((member) => !member.ready || !member.connected)) {
-      return this.#refuse(client, action, PartyErrorCode.MembersNotReady);
-    }
+    const problem = this.#confirmationProblem(client, revision, members);
+    if (problem) return this.#refuse(client, action, problem);
     if (loadouts.some((loadout) => loadout.some((item) => item.issue !== null))) {
       return this.#refuse(client, action, PartyErrorCode.LoadoutInvalid);
     }
-    this.#proposal = {
+    const proposal: PreparationProposal = {
       revision,
       shipId,
       members: members.map((member, index) => ({
@@ -515,7 +554,137 @@ export class PartyRoom
         loadout: loadouts[index] ?? [],
       })),
     };
+    const expeditions = this.#deps.expeditions;
+    if (!expeditions) {
+      this.#proposal = proposal;
+      this.state.confirmedRevision = revision;
+      return;
+    }
+    if (this.#expedition?.revision === revision || this.#starting === revision) return;
+    this.#starting = revision;
+    try {
+      await this.#startExpedition(client, expeditions, proposal, members);
+    } finally {
+      if (this.#starting === revision) this.#starting = null;
+    }
+  }
+
+  /**
+   * Reserves the confirmed loadouts. The start key names the revision, so a retry
+   * after a lost answer gets the same expedition. If the party changed while the
+   * database worked, the new expedition is cancelled and the revision moves on, so
+   * that key is never needed again.
+   */
+  async #startExpedition(
+    client: PartyClient,
+    expeditions: ExpeditionStarter,
+    proposal: PreparationProposal,
+    members: readonly PartyMemberState[],
+  ): Promise<void> {
+    const action = PartyClientMessage.Confirm;
+    const { revision } = proposal;
+    // An earlier preparation of these members may still be returning its items.
+    await Promise.all([...this.#pendingCancels]);
+    let started: Awaited<ReturnType<ExpeditionStarter['start']>>;
+    try {
+      started = await expeditions.start(
+        {
+          partyKey: `${this.roomId}:${revision}`,
+          leaderAccountId: this.state.leaderId,
+          shipId: proposal.shipId,
+          members: proposal.members.map((member) => ({
+            accountId: member.accountId,
+            classId: member.classId,
+            loadout: member.loadout.map(({ slot, instanceId }) => ({ slot, instanceId })),
+          })),
+        },
+        (expeditionId) => this.#preparationExpired(expeditionId),
+      );
+    } catch (error) {
+      this.#logFailure('reservar os itens', error);
+      return this.#refuse(client, action, PartyErrorCode.PreparationUnavailable);
+    }
+    if (!started.ok) return this.#refuse(client, action, started.code);
+    const problem = this.#confirmationProblem(client, revision, members);
+    if (problem) {
+      void this.#cancelExpedition(started.expeditionId);
+      this.#changed();
+      return this.#refuse(client, action, problem);
+    }
+    this.#expedition = {
+      id: started.expeditionId,
+      revision,
+      deadline: started.prepareDeadline,
+    };
+    this.state.expeditionId = started.expeditionId;
+    this.state.expeditionState = started.state;
+    this.#proposal = proposal;
     this.state.confirmedRevision = revision;
+    if (started.state === 'PREPARING') this.#startCountdown();
+  }
+
+  /** Seconds left before the deadline, counted on the server's clock. */
+  #startCountdown(): void {
+    this.#stopCountdown();
+    const tick = () => {
+      const deadline = this.#expedition?.deadline ?? 0;
+      this.state.prepareSecondsLeft = Math.max(0, Math.ceil((deadline - this.#now()) / 1000));
+    };
+    tick();
+    this.#countdown = setInterval(tick, 1000);
+    this.#countdown.unref();
+  }
+
+  #stopCountdown(): void {
+    if (this.#countdown) clearInterval(this.#countdown);
+    this.#countdown = null;
+  }
+
+  /** The deadline passed without a match: the service already returned the items. */
+  #preparationExpired(expeditionId: string): void {
+    if (this.#expedition?.id !== expeditionId) return;
+    this.#clearExpedition();
+    this.#notifyExpeditionEnded('expired');
+    this.#changed();
+  }
+
+  /**
+   * Cancels the preparation because the party changed. The members are told once the
+   * items are back in the database, so the stash they reload is already free.
+   */
+  #endExpedition(reason: ExpeditionEndedNotice['reason']): void {
+    const expedition = this.#expedition;
+    if (!expedition) return;
+    this.#clearExpedition();
+    void this.#cancelExpedition(expedition.id).then((done) => {
+      if (done) this.#notifyExpeditionEnded(reason);
+    });
+  }
+
+  #clearExpedition(): void {
+    this.#expedition = null;
+    this.#stopCountdown();
+    this.state.expeditionId = '';
+    this.state.expeditionState = '';
+    this.state.prepareSecondsLeft = 0;
+  }
+
+  /** Resolves true once the cancellation is committed (false: the service retries it). */
+  #cancelExpedition(expeditionId: string): Promise<boolean> {
+    const expeditions = this.#deps.expeditions;
+    if (!expeditions) return Promise.resolve(true);
+    const cancelling = expeditions.cancel(expeditionId).catch((error: unknown) => {
+      this.#logFailure('cancelar a preparação', error);
+      return false;
+    });
+    this.#pendingCancels.add(cancelling);
+    void cancelling.finally(() => this.#pendingCancels.delete(cancelling));
+    return cancelling;
+  }
+
+  #notifyExpeditionEnded(reason: ExpeditionEndedNotice['reason']): void {
+    const notice: ExpeditionEndedNotice = { reason };
+    this.broadcast(PartyServerMessage.ExpeditionEnded, notice);
   }
 
   #refuse(client: PartyClient, action: string, code: PartyErrorCode): void {

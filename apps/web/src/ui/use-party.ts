@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  type ExpeditionEndedNotice,
   PARTY_KICKED_CLOSE_CODE,
   PARTY_MOVED_CLOSE_CODE,
   type PartyInviteNotice,
@@ -52,6 +53,12 @@ const REFUSAL_TEXT: Record<string, string> = {
   loadout_invalid: 'Seu loadout tem itens que não valem para a sua classe. Corrija e salve.',
   ship_missing: 'Escolha a nave antes de confirmar.',
   members_not_ready: 'Todos precisam estar conectados e prontos.',
+  member_in_expedition: 'Um membro da party já está em outra expedição.',
+};
+
+const EXPEDITION_ENDED_TEXT: Record<ExpeditionEndedNotice['reason'], string> = {
+  expired: 'A preparação expirou sem partida e os itens reservados voltaram ao stash.',
+  party_changed: 'A party mudou: a preparação foi cancelada e os itens voltaram ao stash.',
 };
 
 type OpenOutcome = { ok: true } | { ok: false; code: ClientErrorCode | 'join_failed' | 'stale' };
@@ -98,6 +105,7 @@ export function useParty(signedIn: boolean): PartyControls {
           { ...invite, receivedAt: Date.now() },
         ]),
       onRefused: (refusal) => setNotice(REFUSAL_TEXT[refusal.code] ?? 'Ação recusada.'),
+      onExpeditionEnded: (ended) => setNotice(EXPEDITION_ENDED_TEXT[ended.reason]),
       onClosed: (code) => {
         if (!isCurrent() || self === replacing.current) return; // Replaced by a newer party.
         current.current = null;

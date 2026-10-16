@@ -112,8 +112,13 @@ describe('expedition start and reservations', () => {
       ['backpack.0', ItemId.Medkit, 3],
     ]);
     expect(await count('item_reservations', result.expeditionId)).toBe(4);
-    // Reserved items stay in the stash; they are only unavailable.
-    expect((await getInventory(t.db, bravo.accountId)).stash).toEqual(stashBefore);
+    // Reserved items stay in the stash, where they are only marked unavailable.
+    const withoutFlag = (stash: typeof stashBefore) =>
+      stash.map(({ reserved: _, ...entry }) => entry);
+    const stashAfter = (await getInventory(t.db, bravo.accountId)).stash;
+    expect(withoutFlag(stashAfter)).toEqual(withoutFlag(stashBefore));
+    expect(stashBefore.map((entry) => entry.reserved)).toEqual([false, false]);
+    expect(stashAfter.map((entry) => entry.reserved)).toEqual([true, true]);
 
     // The snapshot records exactly what each member took.
     const snapshot = await t.pool.query<{ class_id: string; loadout: unknown }>(
@@ -149,7 +154,13 @@ describe('expedition start and reservations', () => {
       ...first,
       members: [...first.members].reverse(),
     });
-    expect(retried).toEqual({ ...created, created: false });
+    if (!retried.ok) throw new Error(retried.reason);
+    const { prepareRemainingMs: left, ...rest } = retried;
+    const { prepareRemainingMs: total, ...original } = created;
+    expect(rest).toEqual({ ...original, created: false });
+    // Time left is measured again by the database clock.
+    expect(left).toBeGreaterThan(0);
+    expect(left).toBeLessThanOrEqual(total);
     expect(await count('expedition_members', created.expeditionId)).toBe(2);
     expect(await count('item_reservations', created.expeditionId)).toBe(4);
 

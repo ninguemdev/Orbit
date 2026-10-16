@@ -1,5 +1,6 @@
 import { Client, type Room } from '@colyseus/sdk';
 import {
+  type ExpeditionEndedNotice,
   PARTY_ROOM_NAME,
   PartyClientMessage,
   type PartyInviteNotice,
@@ -33,6 +34,8 @@ export interface PartyView {
   readonly revision: number;
   /** Revision the leader confirmed; 0 when there is no valid confirmation. */
   readonly confirmedRevision: number;
+  /** Expedition reserved by the confirmation, while it waits for the match. */
+  readonly expedition: { readonly id: string; readonly secondsLeft: number } | null;
   /** Ordered by arrival. */
   readonly members: readonly PartyMember[];
 }
@@ -41,6 +44,7 @@ export interface PartyListeners {
   onChange(view: PartyView): void;
   onInvite(notice: PartyInviteNotice): void;
   onRefused(refusal: PartyRefusal): void;
+  onExpeditionEnded(notice: ExpeditionEndedNotice): void;
   /** The server closed the party connection (kicked, moved, lost). */
   onClosed(code: number): void;
 }
@@ -63,6 +67,9 @@ export class PartyConnection {
     );
     room.onMessage(PartyServerMessage.Refused, (refusal: PartyRefusal) =>
       listeners.onRefused(refusal),
+    );
+    room.onMessage(PartyServerMessage.ExpeditionEnded, (notice: ExpeditionEndedNotice) =>
+      listeners.onExpeditionEnded(notice),
     );
     room.onLeave((code) => {
       this.#closed = true;
@@ -160,6 +167,10 @@ function toView(state: PartyStateView): PartyView {
     selectedShipId: state.selectedShipId ?? '',
     revision: state.revision ?? 0,
     confirmedRevision: state.confirmedRevision ?? 0,
+    expedition:
+      state.expeditionId && state.expeditionState === 'PREPARING'
+        ? { id: state.expeditionId, secondsLeft: state.prepareSecondsLeft ?? 0 }
+        : null,
     members: members.map((entry) => entry.member),
   };
 }

@@ -84,14 +84,15 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
       <fieldset className="class-picker" data-testid="party-readiness">
         <legend>Prontidão</legend>
         <p className="hint">
-          Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos. A
-          missão e a reserva dos itens começam na 0.3.
+          Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos.
+          Ao confirmar, o servidor reserva os itens dos loadouts para a missão.
         </p>
         {view.confirmedRevision === view.revision ? (
           <p className="notice" data-testid="party-confirmed">
             Preparação confirmada pelo líder.
           </p>
         ) : null}
+        {view.expedition ? <PreparationStatus secondsLeft={view.expedition.secondsLeft} /> : null}
         <button
           type="button"
           onClick={() => party.setReady(view.revision, !me?.ready)}
@@ -110,5 +111,18 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
         ) : null}
       </fieldset>
     </section>
+  );
+}
+
+/**
+ * Reserved items waiting for the match. The match room arrives in the next step of
+ * 0.3; until then the server cancels the preparation when its countdown ends.
+ */
+function PreparationStatus({ secondsLeft }: { secondsLeft: number }) {
+  return (
+    <p className="notice" data-testid="expedition-preparing">
+      Itens reservados para a missão. A partida com a party ainda não abre nesta versão: a
+      preparação expira em {secondsLeft} s e os itens voltam ao stash.
+    </p>
   );
 }

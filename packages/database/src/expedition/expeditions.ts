@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   CATALOG_VERSION,
   type ClassId,
@@ -23,6 +23,8 @@ import {
   profiles,
   shipUnlocks,
 } from '../schema';
+
+export type { ExpeditionState } from '../schema';
 
 /** Time the party has to load into the match before the preparation is cancelled (docs/06). */
 export const PREPARE_SECONDS = 30;
@@ -71,6 +73,8 @@ export type StartExpeditionResult =
       /** False when this call is a retry of a request already recorded. */
       readonly created: boolean;
       readonly prepareDeadlineAt: Date;
+      /** Time left until the deadline, measured by the database clock (no host skew). */
+      readonly prepareRemainingMs: number;
     }
   | {
       readonly ok: false;
@@ -132,6 +136,10 @@ function isWellFormed(request: StartExpeditionRequest): boolean {
   );
 }
 
+/** Milliseconds until the preparation deadline, by the database clock. */
+const remainingMs = () =>
+  sql<number>`greatest(0, extract(epoch from (${expeditions.prepareDeadlineAt} - now())) * 1000)::float8`;
+
 const refuse = (
   reason: StartExpeditionRefusal,
   accountIds: readonly string[] = [],
@@ -149,6 +157,7 @@ async function existing(
       state: expeditions.state,
       requestHash: expeditions.requestHash,
       prepareDeadlineAt: expeditions.prepareDeadlineAt,
+      remainingMs: remainingMs(),
     })
     .from(expeditions)
     .where(eq(expeditions.startKey, request.startKey));
@@ -164,6 +173,7 @@ async function existing(
     state,
     created: false,
     prepareDeadlineAt: row.prepareDeadlineAt,
+    prepareRemainingMs: row.remainingMs,
   };
 }
 
@@ -318,6 +328,7 @@ export async function startExpedition(
       state: 'PREPARING',
       created: true,
       prepareDeadlineAt: created.prepareDeadlineAt,
+      prepareRemainingMs: seconds * 1000,
     };
   });
 }
@@ -362,6 +373,33 @@ export async function cancelPreparation(
       .where(eq(expeditions.id, expeditionId));
     return 'cancelled';
   });
+}
+
+export interface PendingPreparation {
+  readonly expeditionId: string;
+  /** Time left until the deadline by the database clock; 0 once it passed. */
+  readonly remainingMs: number;
+}
+
+/** Expeditions still waiting to start, oldest deadline first (recovery after a restart). */
+export async function listPreparingExpeditions(db: Database): Promise<PendingPreparation[]> {
+  return db
+    .select({ expeditionId: expeditions.id, remainingMs: remainingMs() })
+    .from(expeditions)
+    .where(eq(expeditions.state, 'PREPARING'))
+    .orderBy(asc(expeditions.prepareDeadlineAt));
+}
+
+/** The PREPARING expedition recorded for a start key, if any (cleanup after a lost answer). */
+export async function findPreparationByStartKey(
+  db: Database,
+  startKey: string,
+): Promise<PendingPreparation | null> {
+  const [row] = await db
+    .select({ expeditionId: expeditions.id, remainingMs: remainingMs() })
+    .from(expeditions)
+    .where(and(eq(expeditions.startKey, startKey), eq(expeditions.state, 'PREPARING')));
+  return row ?? null;
 }
 
 export interface ActiveExpedition {
