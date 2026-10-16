@@ -1,5 +1,7 @@
 import { type Page, expect, test } from '@playwright/test';
-import { TEST_PASSWORD, seedDev, signUpInNewContext } from './support/accounts';
+import { TEST_PASSWORD, seedDev, signUpInNewContext, closeOpenContexts } from './support/accounts';
+
+test.afterEach(closeOpenContexts);
 
 /** 0.2 gate: two accounts prepare a mission together and keep it after signing in again. */
 test('two accounts prepare together and keep their choices after signing in again', async ({
@@ -65,11 +67,30 @@ test('two accounts prepare together and keep their choices after signing in agai
       await expect(page.getByRole('button', { name: 'Não estou pronto' })).toBeVisible();
     }
     await alfa.page.getByRole('button', { name: 'Confirmar preparação' }).click();
-    // The confirmation reserves both loadouts in the stash.
+  });
+
+  await test.step('the confirmation takes both into the mission with the items reserved', async () => {
+    for (const { page, nick } of [alfa, bravo]) {
+      await expect(page.getByTestId('game').locator('canvas')).toBeVisible();
+      await expect(page.getByTestId('hud')).toContainText(nick);
+    }
     for (const { page } of [alfa, bravo]) {
-      await expect(page.getByTestId('party-confirmed')).toBeVisible();
-      await expect(page.getByTestId('expedition-preparing')).toBeVisible();
-      await expect(page.getByTestId('stash')).toContainText('(reservado)');
+      await expect(page.getByTestId('hud')).toContainText(alfa.nick);
+      await expect(page.getByTestId('hud')).toContainText(bravo.nick);
+    }
+  });
+
+  await test.step('leaving ends the match and returns the reserved items', async () => {
+    for (const { page } of [alfa, bravo]) {
+      await page.getByRole('button', { name: 'Sair da missão' }).click();
+      await expect(page.getByTestId('signed-in-as')).toBeVisible();
+    }
+    for (const { page } of [alfa, bravo]) {
+      await expect(page.getByTestId('party-notice')).toHaveText(
+        'A missão terminou sem extração e os itens reservados voltaram ao stash.',
+      );
+      await expect(page.getByTestId('stash')).not.toContainText('(reservado)');
+      await expect(page.getByTestId('expedition-preparing')).toHaveCount(0);
     }
   });
 

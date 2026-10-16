@@ -1,9 +1,21 @@
 import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER } from '@orbit/catalog';
 import type { PartyPanelProps } from './PartyPanel';
+import type { PartyControls } from './use-party';
 import { shipName } from './catalog-names';
 
 /** Ship, class and readiness of the party's next mission. */
-export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
+interface MissionSetupPanelProps extends PartyPanelProps {
+  /** A mission entry is in progress. */
+  readonly entering: boolean;
+  readonly onEnterMission: () => void;
+}
+
+export function MissionSetupPanel({
+  party,
+  myAccountId,
+  entering,
+  onEnterMission,
+}: MissionSetupPanelProps) {
   const { view } = party;
   if (!view) {
     return (
@@ -92,7 +104,11 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
             Preparação confirmada pelo líder.
           </p>
         ) : null}
-        {view.expedition ? <PreparationStatus secondsLeft={view.expedition.secondsLeft} /> : null}
+        <MissionStatus
+          expedition={view.expedition}
+          entering={entering}
+          onEnterMission={onEnterMission}
+        />
         <button
           type="button"
           onClick={() => party.setReady(view.revision, !me?.ready)}
@@ -114,15 +130,28 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
   );
 }
 
+interface MissionStatusProps {
+  readonly expedition: NonNullable<PartyControls['view']>['expedition'];
+  readonly entering: boolean;
+  readonly onEnterMission: () => void;
+}
+
 /**
- * Reserved items waiting for the match. The match room arrives in the next step of
- * 0.3; until then the server cancels the preparation when its countdown ends.
+ * The reserved expedition: loading into the match (everyone must enter before the
+ * countdown ends) or the match already running. Entering again is always offered.
  */
-function PreparationStatus({ secondsLeft }: { secondsLeft: number }) {
+function MissionStatus({ expedition, entering, onEnterMission }: MissionStatusProps) {
+  if (!expedition) return null;
   return (
-    <p className="notice" data-testid="expedition-preparing">
-      Itens reservados para a missão. A partida com a party ainda não abre nesta versão: a
-      preparação expira em {secondsLeft} s e os itens voltam ao stash.
-    </p>
+    <div className="mission-status">
+      <p className="notice" data-testid="expedition-preparing">
+        {expedition.state === 'ACTIVE'
+          ? 'Missão em andamento. Volte para a sua tripulação.'
+          : `Itens reservados. Entrando na missão: se alguém não entrar em ${expedition.secondsLeft} s, a preparação é cancelada e os itens voltam ao stash.`}
+      </p>
+      <button type="button" disabled={entering} onClick={onEnterMission}>
+        {entering ? 'Entrando…' : 'Entrar na missão'}
+      </button>
+    </div>
   );
 }

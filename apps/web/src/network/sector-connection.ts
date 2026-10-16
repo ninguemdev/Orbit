@@ -5,6 +5,7 @@ import {
   DEV_ROOM_NAME,
   INPUT_SEND_RATE_HZ,
   INTERPOLATION_DELAY_MS,
+  type MissionTicketResponse,
   PROTOCOL_VERSION,
   ServerMessage,
   type CrewInput,
@@ -73,6 +74,7 @@ export class SectorConnection implements SectorBridge {
   #seq = 0;
   #helmSeq = 0;
   #lastNotice: Notice | null = null;
+  #closeCode: number | null = null;
   readonly #timers: ReturnType<typeof setInterval>[];
   readonly #statusListeners = new Set<(status: ConnectionStatus) => void>();
 
@@ -85,7 +87,8 @@ export class SectorConnection implements SectorBridge {
       this.#setStatus('reconnecting');
     });
     room.onReconnect(() => this.#setStatus('connected'));
-    room.onLeave(() => {
+    room.onLeave((code) => {
+      this.#closeCode = code;
       this.#stopTimers();
       this.#setStatus('disconnected');
     });
@@ -105,6 +108,22 @@ export class SectorConnection implements SectorBridge {
       : { protocolVersion: PROTOCOL_VERSION };
     const room = await client.joinOrCreate<SectorStateView>(DEV_ROOM_NAME, options);
     return new SectorConnection(room);
+  }
+
+  /** Enters the mission room of an expedition with a single-use ticket. */
+  static async joinMission(
+    endpoint: string,
+    issued: MissionTicketResponse,
+  ): Promise<SectorConnection> {
+    const client = new Client(endpoint);
+    client.auth.token = issued.ticket;
+    const room = await client.joinById<SectorStateView>(issued.roomId);
+    return new SectorConnection(room);
+  }
+
+  /** Close code sent by the server when the connection ended; null while open. */
+  get closeCode(): number | null {
+    return this.#closeCode;
   }
 
   get sessionId(): string {

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MeResponse } from '@orbit/contracts';
+import {
+  MISSION_CANCELLED_CLOSE_CODE,
+  MISSION_ENDED_CLOSE_CODE,
+  type MeResponse,
+} from '@orbit/contracts';
 import { accountClient, describeAccountError } from '../network/account-client';
 import { installDebugHook } from '../network/debug-hook';
 import { SectorConnection, defaultServerEndpoint } from '../network/sector-connection';
@@ -17,7 +21,8 @@ type Screen =
   | { kind: 'access'; notice?: string }
   | { kind: 'home'; me: MeResponse; suggestRecovery: boolean; error?: string }
   | { kind: 'connecting'; me: MeResponse }
-  | { kind: 'playing'; me: MeResponse; connection: SectorConnection };
+  /** In a sector: the development room of 0.1, or the mission room of an expedition. */
+  | { kind: 'playing'; me: MeResponse; connection: SectorConnection; mission: boolean };
 
 const ECONOMY_KEY = 'orbit.economy';
 
@@ -105,7 +110,7 @@ export function App() {
         void connection.leave();
         return;
       }
-      setScreen({ kind: 'playing', me, connection });
+      setScreen({ kind: 'playing', me, connection, mission: false });
     } catch {
       if (attempt !== joinAttempt.current) return;
       setScreen({
@@ -117,6 +122,40 @@ export function App() {
     }
   };
 
+  /** Enters the mission room of the party's expedition with a fresh ticket. */
+  const enterMission = useCallback(async (me: MeResponse) => {
+    const attempt = ++joinAttempt.current;
+    setScreen({ kind: 'connecting', me });
+    const fail = (error: string) => {
+      if (attempt === joinAttempt.current) {
+        setScreen({ kind: 'home', me, suggestRecovery: false, error });
+      }
+    };
+    const issued = await accountClient.missionTicket();
+    if (!issued.ok) return fail(describeAccountError(issued.code));
+    try {
+      const connection = await SectorConnection.joinMission(defaultServerEndpoint(), issued.data);
+      if (attempt !== joinAttempt.current) {
+        void connection.leave();
+        return;
+      }
+      setScreen({ kind: 'playing', me, connection, mission: true });
+    } catch {
+      fail('Não foi possível entrar na missão. Tente de novo antes de o prazo acabar.');
+    }
+  }, []);
+
+  // The confirmation reserved the loadouts: everyone loads into the match on their own.
+  // Each expedition is entered automatically once; afterwards the panel offers a button.
+  const autoEntered = useRef<string | null>(null);
+  const expeditionId = party.view?.expedition?.id ?? null;
+  const homeAs = screen.kind === 'home' ? screen.me : null;
+  useEffect(() => {
+    if (!homeAs || !expeditionId || autoEntered.current === expeditionId) return;
+    autoEntered.current = expeditionId;
+    void enterMission(homeAs);
+  }, [homeAs, expeditionId, enterMission]);
+
   const connection = screen.kind === 'playing' ? screen.connection : null;
   const playingAs = screen.kind === 'playing' ? screen.me : null;
   useEffect(() => {
@@ -124,9 +163,17 @@ export function App() {
     const me = playingAs;
     const removeHook = installDebugHook(connection);
     const unsubscribe = connection.onStatus((status) => {
-      if (status === 'disconnected') {
-        setScreen({ kind: 'home', me, suggestRecovery: false, error: 'Conexão encerrada.' });
-      }
+      if (status !== 'disconnected') return;
+      // The end of a mission is explained by the party notice; anything else is a loss.
+      const explained =
+        connection.closeCode === MISSION_CANCELLED_CLOSE_CODE ||
+        connection.closeCode === MISSION_ENDED_CLOSE_CODE;
+      setScreen({
+        kind: 'home',
+        me,
+        suggestRecovery: false,
+        ...(explained ? {} : { error: 'Conexão encerrada.' }),
+      });
     });
     return () => {
       unsubscribe();
@@ -176,6 +223,7 @@ export function App() {
             economy={economy}
             onToggleEconomy={toggleEconomy}
             onLeave={leave}
+            leaveLabel={screen.mission ? 'Sair da missão' : 'Sair'}
           />
         </>
       );
@@ -214,9 +262,8 @@ export function App() {
           </header>
           <p className="hint">
             Prepare a próxima missão: forme a party, escolha classe, loadout e nave e confirme a
-            prontidão. A confirmação reserva os itens; a partida com a party ainda não abre nesta
-            versão. &quot;Entrar na sala&quot; abre a sala de testes da 0.1, compartilhada por todos
-            e sem a sua party.
+            prontidão. A confirmação reserva os itens e leva a party para a missão. &quot;Entrar na
+            sala&quot; abre a sala de testes da 0.1, compartilhada por todos e sem a sua party.
           </p>
           {screen.kind === 'home' && screen.error ? (
             <p role="alert" className="error">
@@ -235,7 +282,12 @@ export function App() {
               ) : null}
             </div>
             <div className="home-column">
-              <MissionSetupPanel party={party} myAccountId={me.account.id} />
+              <MissionSetupPanel
+                party={party}
+                myAccountId={me.account.id}
+                entering={screen.kind === 'connecting'}
+                onEnterMission={() => void enterMission(me)}
+              />
             </div>
             <div className="home-column">
               <PreparationPanels

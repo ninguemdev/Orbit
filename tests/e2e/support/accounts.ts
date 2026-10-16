@@ -1,11 +1,21 @@
 import { execFileSync } from 'node:child_process';
-import { type Browser, type Page, expect } from '@playwright/test';
+import { type Browser, type BrowserContext, type Page, expect } from '@playwright/test';
 
 export const TEST_PASSWORD = 'senha de teste longa';
 
 /** A nick unique to this run, within the 20-character limit. */
 export function uniqueNick(prefix: string): string {
   return `${prefix}_${Date.now().toString(36).slice(-6)}`;
+}
+
+/**
+ * Contexts opened by the helpers. Playwright closes only its own fixtures, and a page
+ * left in a match keeps rendering: each spec closes these after every test.
+ */
+const openContexts: BrowserContext[] = [];
+
+export async function closeOpenContexts(): Promise<void> {
+  await Promise.all(openContexts.splice(0).map((context) => context.close()));
 }
 
 /** Opens a fresh browser context and signs up a new account; returns the page and nick. */
@@ -15,6 +25,7 @@ export async function signUpInNewContext(
   path = '/',
 ): Promise<{ page: Page; nick: string }> {
   const context = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  openContexts.push(context);
   const page = await context.newPage();
   await page.goto(path);
   const nick = uniqueNick(prefix);

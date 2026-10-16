@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { seedDev, signUpInNewContext } from './support/accounts';
+import { seedDev, signUpInNewContext, closeOpenContexts } from './support/accounts';
+
+test.afterEach(closeOpenContexts);
 
 test('prepares a loadout from the stash, checked by the server', async ({ browser }) => {
   const { page, nick } = await signUpInNewContext(browser, 'Equipa');

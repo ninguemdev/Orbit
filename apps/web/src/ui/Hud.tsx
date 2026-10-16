@@ -57,10 +57,11 @@ interface HudProps {
   readonly economy: boolean;
   readonly onToggleEconomy: () => void;
   readonly onLeave: () => void;
+  readonly leaveLabel?: string;
 }
 
 /** Overlay refreshed at 5 Hz from the latest authorized state, not every frame. */
-export function Hud({ bridge, economy, onToggleEconomy, onLeave }: HudProps) {
+export function Hud({ bridge, economy, onToggleEconomy, onLeave, leaveLabel = 'Sair' }: HudProps) {
   const [hud, setHud] = useState(() => readHud(bridge));
 
   useEffect(() => {
@@ -100,7 +101,7 @@ export function Hud({ bridge, economy, onToggleEconomy, onLeave }: HudProps) {
           FPS)
         </label>
         <button type="button" onClick={onLeave}>
-          Sair
+          {leaveLabel}
         </button>
       </div>
     </aside>

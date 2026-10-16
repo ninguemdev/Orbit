@@ -9,6 +9,7 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 - Reserva atômica de expedição no banco (migração `0007_expeditions`): expedição `PREPARING` com chave de início idempotente, snapshot de classe e loadout de cada membro, participação ativa única por conta e reserva única por item, revalidando classe, loadout e licença da nave sob lock. Cancelar a preparação devolve as reservas.
 - A confirmação do líder reserva os loadouts da party numa expedição `PREPARING`. O stash mostra os itens reservados, o loadout fica travado e qualquer mudança na party cancela a preparação e devolve os itens. Sem sala da missão ainda, a preparação expira em 30 s; ao reiniciar, o servidor cancela as preparações deixadas pelo processo anterior.
 - Sala da missão por expedição, criada pelo servidor: só os membros entram, com ticket de uso único de `POST /api/missions/tickets`; a expedição fica `ACTIVE` quando o roster inteiro carregou dentro do prazo, e senão é cancelada e devolve os itens. Até existirem extração e liquidação, fechar a sala encerra a partida como aborto técnico que devolve os itens; ao reiniciar, o servidor aborta as partidas deixadas em andamento.
+- Depois da confirmação, os membros entram sozinhos na missão da party (tela do jogo com **Sair da missão**); se a entrada falha, **Entrar na missão** tenta de novo antes do prazo.
 
 ### Alterado
 
