@@ -13,8 +13,8 @@ body,
   overflow: hidden;
 }
 
-/* The game canvas is fixed to the viewport; menus taller than the window scroll here. */
-#root {
+/* The game screen stays fixed; menus taller than the window scroll. */
+#root:has(> .menu, > .home) {
   overflow-y: auto;
 }
 
@@ -74,15 +74,16 @@ body,
 }
 
 /* Tall enough windows keep the top bar in view and scroll each column on its own. */
-@media (min-width: 1000px) and (min-height: 560px) {
+@media (width >= 1000px) and (height >= 560px) {
   .home {
     height: 100%;
   }
 
+  /* Never squeezed below this: if the top grows, the page scrolls instead. */
   .home-columns {
     flex: 1;
     align-items: stretch;
-    min-height: 0;
+    min-height: 20rem;
   }
 
   .home-column {
@@ -92,19 +93,20 @@ body,
   }
 }
 
-@media (max-width: 999px) {
+@media (width < 1000px) {
   .home-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 640px) {
+@media (width < 640px) {
   .home-columns {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-.panel {
+.panel,
+.class-picker {
   padding: 0.75rem;
   border: 1px solid #24314a;
   border-radius: 6px;
@@ -273,9 +275,6 @@ button.secondary {
 
 .class-picker {
   margin: 1rem 0 0;
-  padding: 0.75rem;
-  border: 1px solid #24314a;
-  border-radius: 6px;
 }
 
 .home label.class-option {

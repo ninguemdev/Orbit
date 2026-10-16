@@ -7,7 +7,8 @@ import { AccessScreen } from './AccessScreen';
 import { GameView } from './GameView';
 import { Hud } from './Hud';
 import { PreparationPanels } from './InventoryPanel';
-import { MissionSetupPanel, PartyPanel } from './PartyPanel';
+import { MissionSetupPanel } from './MissionSetupPanel';
+import { PartyPanel } from './PartyPanel';
 import { RecoveryCodePanel } from './RecoveryCodePanel';
 import { useParty } from './use-party';
 
