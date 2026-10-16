@@ -38,12 +38,46 @@ export interface ShipView {
   readonly operatorId: string;
 }
 
+/** Read-only list as the client SDK exposes synchronized arrays. */
+export interface ListView<T> {
+  forEach(cb: (item: T, index: number) => void): void;
+  readonly length: number;
+}
+
+export interface AsteroidView {
+  readonly x: number;
+  readonly y: number;
+  readonly radius: number;
+}
+
+export interface SectorFeatureView {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly radius: number;
+}
+
+/**
+ * Static geometry of the sector, sent once on entry. It holds only what players may
+ * see: never the seed nor what the containers hold.
+ */
+export interface SectorLayoutView {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+  readonly asteroids: ListView<AsteroidView>;
+  readonly containers: ListView<SectorFeatureView>;
+  readonly extractionZones: ListView<SectorFeatureView>;
+}
+
 export interface SectorStateView {
   readonly protocolVersion: number;
   readonly catalogVersion: number;
   readonly sectorId: string;
   readonly phase: RoomPhase;
   readonly tick: number;
+  readonly layout: SectorLayoutView;
   readonly ship: ShipView;
   readonly crew: {
     forEach(cb: (member: CrewMemberView, id: string) => void): void;

@@ -255,7 +255,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V03.01 — Reservar equipamento atomicamente
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 16/10/2026 (PRs #44 e #45)
 
 **Área:** data/server. **Tamanho:** G. **Depende de:** V02.10.
 
@@ -267,7 +267,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V03.02 — Ativar sala com roster autenticado
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 16/10/2026 (PRs #46 e #47)
 
 **Área:** network/server. **Tamanho:** M. **Depende de:** V03.01.
 
@@ -279,7 +279,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V03.03 — Gerar setor mínimo navegável
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 16/10/2026
 
 **Área:** gameplay. **Tamanho:** M. **Depende de:** V03.02, V01.07.
 

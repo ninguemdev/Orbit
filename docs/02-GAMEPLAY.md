@@ -38,6 +38,16 @@ Mapa finito por partida, alvo inicial de 12.000 × 12.000 unidades. A nave nasce
 
 A geração precisa garantir caminho viável entre spawn, pelo menos um ponto de loot e extração. Não colocar a única saída atrás de um obstáculo impossível de atravessar.
 
+**Setor mínimo da 0.3 (V03.03).** Cada missão gera seu setor no servidor a partir de uma seed privada de 256 bits, com os parâmetros de `OPEN_SECTOR` no catálogo:
+
+- Quadrado de 12.000 × 12.000 com bordas sólidas.
+- A nave nasce a 4.500 unidades do centro, virada para ele, sem asteroide ou contêiner a menos de 1.400 unidades.
+- Uma zona de extração de raio 600, aproximadamente do lado oposto ao spawn, sem asteroides dentro.
+- Três contêineres de loot com espaço livre em volta para a nave encostar.
+- Até 70 asteroides de raio 90 a 320.
+
+Entre dois asteroides, ou entre um asteroide e a borda, sempre sobra mais que o diâmetro da maior nave, então nenhum grupo de asteroides fecha uma área. Além disso, o servidor procura em grade uma rota da maior nave do spawn até cada contêiner e até a zona de extração antes de aceitar o setor; se faltar alguma, gera outro a partir da mesma seed. Asteroides e contêineres colidem com a nave; a zona de extração não. Abrir contêineres e extrair chegam nas tarefas V03.04 e V03.05. A missão usa a nave escolhida pelo líder.
+
 ## Caminhada espacial e exploração
 
 EVA usa traje com reserva de oxigênio, movimento por propulsor simples e retorno pela eclusa. Engenheiro e Oficial se movem mais rápido em EVA. Ao sair, o personagem herda a velocidade da nave; ao entrar, o servidor valida distância, eclusa, velocidade relativa e estado do traje. Distâncias de interação e oxigênio sempre vêm do servidor.

@@ -1,4 +1,7 @@
+import type { SectorFeature } from '@orbit/catalog';
 import type { SectorStateView } from '@orbit/contracts';
+import type { Circle, Rect } from '@orbit/simulation';
+import { copyList } from './list-view';
 
 export interface CrewSnapshot {
   readonly id: string;
@@ -54,5 +57,26 @@ export function snapshotFromState(state: SectorStateView, receivedAt: number): W
       operatorId: ship.operatorId,
     },
     crew,
+  };
+}
+
+/** Static sector geometry received from the server, as plain data. */
+export interface SectorLayout {
+  readonly bounds: Rect;
+  readonly asteroids: readonly Circle[];
+  readonly containers: readonly SectorFeature[];
+  readonly extractionZones: readonly SectorFeature[];
+}
+
+/** Copies the layout once it has arrived; null while the state has no sector yet. */
+export function layoutFromState(state: SectorStateView): SectorLayout | null {
+  const { layout } = state;
+  if (!layout || layout.maxX <= layout.minX || layout.maxY <= layout.minY) return null;
+  const feature = ({ id, x, y, radius }: SectorFeature): SectorFeature => ({ id, x, y, radius });
+  return {
+    bounds: { minX: layout.minX, minY: layout.minY, maxX: layout.maxX, maxY: layout.maxY },
+    asteroids: copyList(layout.asteroids, ({ x, y, radius }) => ({ x, y, radius })),
+    containers: copyList(layout.containers, feature),
+    extractionZones: copyList(layout.extractionZones, feature),
   };
 }

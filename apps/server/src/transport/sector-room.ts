@@ -1,5 +1,5 @@
 import { type Client, Room } from '@colyseus/core';
-import { CATALOG_VERSION } from '@orbit/catalog';
+import { CATALOG_VERSION, type SectorFeature } from '@orbit/catalog';
 import {
   type ActionRejectedPayload,
   ClientMessage,
@@ -15,7 +15,14 @@ import {
   parseShipInput,
 } from '@orbit/contracts';
 import { SectorSimulation } from '../simulation/sector-simulation';
-import { CrewMemberState, SectorState, ShipState } from './sector-schema';
+import {
+  AsteroidState,
+  CrewMemberState,
+  SectorFeatureState,
+  SectorLayoutState,
+  SectorState,
+  ShipState,
+} from './sector-schema';
 import { ViolationBudget } from './violation-budget';
 
 /** Hard cap; above it Colyseus drops the connection. Normal play sends ~20–40/s. */
@@ -40,19 +47,27 @@ export abstract class SectorRoom<TAuth> extends Room<{
   override maxMessagesPerSecond = MAX_MESSAGES_PER_SECOND;
   override state = new SectorState();
 
-  protected readonly simulation = new SectorSimulation();
+  /** Set by `startSector`, before any client joins. */
+  protected simulation!: SectorSimulation;
   protected now: () => number = () => performance.now();
   readonly #violations = new Map<string, ViolationBudget>();
   readonly #abusive = new Set<string>();
 
-  /** Mission rooms receive their expedition here; the dev room takes no options. */
+  /** The fixed development sector; mission rooms generate their own sector instead. */
   override onCreate(_options?: unknown): void {
+    this.startSector(new SectorSimulation());
+  }
+
+  /** Publishes the sector's geometry and starts the fixed step. Called once, from onCreate. */
+  protected startSector(simulation: SectorSimulation): void {
+    this.simulation = simulation;
     this.state.protocolVersion = PROTOCOL_VERSION;
     this.state.catalogVersion = CATALOG_VERSION;
     this.state.sectorId = this.simulation.sector.id;
     this.state.phase = RoomPhase.Preparing;
     this.state.ship = new ShipState();
     this.state.ship.hullId = this.simulation.ship.hull.id;
+    this.state.layout = layoutState(this.simulation);
     this.syncState();
     this.setFixedTimestep((ctx) => {
       this.simulation.step(ctx.dt, this.now());
@@ -164,4 +179,27 @@ export abstract class SectorRoom<TAuth> extends Room<{
       view.atHelm = member.atHelm;
     }
   }
+}
+
+/** Static geometry sent once to clients: what is visible, never how it was generated. */
+function layoutState(simulation: SectorSimulation): SectorLayoutState {
+  const { bounds, obstacles, containers, extractionZones } = simulation.sector;
+  const layout = new SectorLayoutState();
+  layout.minX = bounds.minX;
+  layout.minY = bounds.minY;
+  layout.maxX = bounds.maxX;
+  layout.maxY = bounds.maxY;
+  for (const { x, y, radius } of obstacles) {
+    const asteroid = new AsteroidState();
+    Object.assign(asteroid, { x, y, radius });
+    layout.asteroids.push(asteroid);
+  }
+  const feature = ({ id, x, y, radius }: SectorFeature) => {
+    const view = new SectorFeatureState();
+    Object.assign(view, { id, x, y, radius });
+    return view;
+  };
+  for (const container of containers) layout.containers.push(feature(container));
+  for (const zone of extractionZones) layout.extractionZones.push(feature(zone));
+  return layout;
 }

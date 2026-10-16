@@ -23,8 +23,8 @@ async function getReady(page: Page) {
 test('a member whose loading failed enters the mission again before the deadline', async ({
   browser,
 }) => {
-  const alfa = await signUpInNewContext(browser, 'Missao_A');
-  const bravo = await signUpInNewContext(browser, 'Missao_B');
+  const alfa = await signUpInNewContext(browser, 'Missao_A', '/?debug=1');
+  const bravo = await signUpInNewContext(browser, 'Missao_B', '/?debug=1');
   const code = (await alfa.page.getByTestId('party-code').textContent()) ?? '';
   await bravo.page.getByLabel('Entrar em outra party (código)').fill(code);
   await bravo.page.getByRole('button', { name: 'Entrar', exact: true }).click();
@@ -54,6 +54,21 @@ test('a member whose loading failed enters the mission again before the deadline
       await expect(page.getByTestId('hud')).toContainText(alfa.nick);
       await expect(page.getByTestId('hud')).toContainText(bravo.nick);
     }
+  });
+
+  await test.step('both see the same generated sector, with loot and an exit', async () => {
+    const layoutOf = (page: Page) =>
+      page.evaluate(() => JSON.stringify(window.__orbit?.layout() ?? null));
+    await expect.poll(() => layoutOf(alfa.page)).not.toBe('null');
+    const layout = JSON.parse(await layoutOf(alfa.page)) as {
+      bounds: { minX: number; maxX: number };
+      containers: unknown[];
+      extractionZones: unknown[];
+    };
+    expect(layout.bounds.maxX - layout.bounds.minX).toBe(12_000);
+    expect(layout.containers.length).toBeGreaterThan(0);
+    expect(layout.extractionZones).toHaveLength(1);
+    await expect.poll(() => layoutOf(bravo.page)).toBe(JSON.stringify(layout));
   });
 });
 

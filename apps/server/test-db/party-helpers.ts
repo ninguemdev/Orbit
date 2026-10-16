@@ -12,7 +12,7 @@ import {
   type PartyStateView,
   type PartyTicketResponse,
 } from '@orbit/contracts';
-import { grantItem } from '@orbit/database';
+import { grantItem, grantShipLicense } from '@orbit/database';
 import { DEFAULT_IDENTITY_POLICY } from '../src/modules/identity/identity-service';
 import { ALLOWED_ORIGIN, type ApiServer, call } from './api-harness';
 
@@ -116,9 +116,15 @@ export function partyHelpers(get: () => ApiServer) {
     return pistol?.instanceId ?? '';
   }
 
-  /** Leader and guest with classes and a pistol each, both ready on the same revision. */
-  async function readyPair() {
+  /**
+   * Leader and guest with classes and a pistol each, both ready on the same revision.
+   * `guestShips` are licensed to the guest before entering, so the party offers them.
+   */
+  async function readyPair({ guestShips = [] }: { guestShips?: readonly string[] } = {}) {
     const [leader, guest] = [await player(), await player()];
+    for (const shipId of guestShips) {
+      await grantShipLicense(get().db, guest.id, shipId, 'grant:test');
+    }
     const party = await enter(leader, { intent: 'create' });
     const guestRoom = await enter(guest, { intent: 'join', inviteCode: party.state.inviteCode });
     party.send(PartyClientMessage.SelectClass, { classId: 'class.pilot' });

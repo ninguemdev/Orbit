@@ -1,4 +1,5 @@
 import { type AuthContext, type Client, ServerError } from '@colyseus/core';
+import { isShipHullId } from '@orbit/catalog';
 import {
   MISSION_CANCELLED_CLOSE_CODE,
   MISSION_ENDED_CLOSE_CODE,
@@ -11,6 +12,8 @@ import type {
   MissionTicket,
   MissionTicketStore,
 } from '../modules/mission/mission-directory';
+import { type SectorSeed, generateOpenSector, newSectorSeed } from '../simulation/sector-generator';
+import { SectorSimulation } from '../simulation/sector-simulation';
 import { SectorRoom } from './sector-room';
 
 export interface MissionRoomDeps {
@@ -19,6 +22,8 @@ export interface MissionRoomDeps {
   readonly tickets: MissionTicketStore;
   readonly expeditions: MissionLifecycle;
   readonly directory: MissionDirectory;
+  /** Private seed of each new sector; random unless a test fixes it. */
+  readonly sectorSeed?: () => SectorSeed;
 }
 
 /** Set by the server when it creates the room; clients cannot create mission rooms. */
@@ -75,7 +80,6 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     if (options?.creationKey !== this.#deps.creationKey || !options.expeditionId) {
       throw new ServerError(403, 'mission_rooms_are_created_by_the_server');
     }
-    super.onCreate();
     // Watching starts before the roster is read: a cancellation committed meanwhile
     // is either seen in the roster or delivered to the watcher.
     this.#unwatch = this.#deps.expeditions.watch(options.expeditionId, {
@@ -87,7 +91,15 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
       this.#unwatch();
       throw new Error('Expedição sem preparação para abrir a sala');
     }
+    // Known before anything below can fail: a room that fails to open still cancels
+    // the preparation on dispose, returning the items at once.
     this.#expeditionId = roster.expeditionId;
+    if (!isShipHullId(roster.shipId)) {
+      throw new Error(`Nave desconhecida na expedição: ${roster.shipId}`);
+    }
+    // The seed stays in this process: clients receive only the resulting geometry.
+    const seed = (this.#deps.sectorSeed ?? newSectorSeed)();
+    this.startSector(new SectorSimulation(generateOpenSector(seed), roster.shipId));
     for (const member of roster.members) this.#roster.set(member.accountId, member.nick);
     this.maxClients = roster.members.length;
     // Not listed for matchmaking; joining needs this room's ID and a ticket for it.

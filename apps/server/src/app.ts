@@ -15,6 +15,7 @@ import { type ClassPreferences, definePartyRoom } from './transport/party-room';
 import { LoadoutService } from './modules/loadout/loadout-service';
 import type { MissionLifecycle } from './modules/expedition/expedition-service';
 import { MissionDirectory, MissionTicketStore } from './modules/mission/mission-directory';
+import type { SectorSeed } from './simulation/sector-generator';
 import { defineMissionRoom } from './transport/mission-room';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
@@ -29,6 +30,8 @@ export interface GameServices {
   readonly db?: Database;
   /** Reserves the loadouts of confirmed parties (needs the database). */
   readonly expeditions?: MissionLifecycle;
+  /** Private seed of each mission sector; random unless a test needs to know it. */
+  readonly sectorSeed?: () => SectorSeed;
   /** Invite code attempts allowed per address (PARTY_CODE_GUESSES_PER_ADDRESS). */
   readonly codeGuessesPerAddress?: number;
 }
@@ -120,6 +123,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
         tickets: missions.tickets,
         expeditions,
         directory: missions.directory,
+        ...(services.sectorSeed ? { sectorSeed: services.sectorSeed } : {}),
       }),
     );
   }

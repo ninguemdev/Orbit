@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { nickSchema } from './identity';
+import type { ListView } from './state';
 
 /**
  * Parties live in their own Colyseus room. Every signed-in player is always in one
@@ -122,7 +123,7 @@ export interface PartyMemberView {
   /** Catalog class ID chosen for the next mission; empty until chosen. */
   readonly classId: string;
   /** Ship licenses this member brings; the party may use the union of all members'. */
-  readonly ships: { forEach(cb: (shipId: string) => void): void; readonly length: number };
+  readonly ships: ListView<string>;
   /** Ready for the current revision; cleared by any relevant change. */
   readonly ready: boolean;
 }
@@ -143,10 +144,7 @@ export interface PartyStateView {
   /** Seconds before an unstarted preparation is cancelled, counted by the server. */
   readonly prepareSecondsLeft: number;
   /** Accounts in the expedition; members who joined the party later are not in it. */
-  readonly expeditionMemberIds: {
-    forEach(cb: (accountId: string) => void): void;
-    readonly length: number;
-  };
+  readonly expeditionMemberIds: ListView<string>;
   readonly members: {
     forEach(cb: (member: PartyMemberView, accountId: string) => void): void;
     readonly size: number;

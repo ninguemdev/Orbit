@@ -1,8 +1,8 @@
 import * as Phaser from 'phaser';
-import { CREW, SECTORS, SHIP_HULLS, SectorId, ShipHullId } from '@orbit/catalog';
+import { CREW, SHIP_HULLS, ShipHullId, isShipHullId } from '@orbit/catalog';
 import { rotate } from '@orbit/simulation';
 import type { SectorBridge } from '../network/sector-connection';
-import type { CrewSnapshot } from '../network/world-snapshot';
+import type { CrewSnapshot, SectorLayout } from '../network/world-snapshot';
 import { KeyboardControls } from './keyboard-controls';
 import { PALETTE, crewColor } from './palette';
 
@@ -18,6 +18,16 @@ interface CrewView {
 const STAR_TEXTURE = 'stars';
 const STAR_PARALLAX = 0.35;
 const FPS_WINDOW_MS = 1000;
+const MINIMAP_SIZE = 180;
+const MINIMAP_MARGIN = 12;
+const LABEL_STYLE = { fontFamily: 'system-ui, sans-serif', fontSize: '14px' } as const;
+
+interface Minimap {
+  readonly map: Phaser.GameObjects.Graphics;
+  readonly ship: Phaser.GameObjects.Triangle;
+  /** World position to a point inside the minimap, in its own pixels. */
+  readonly at: (x: number, y: number) => [number, number];
+}
 
 /**
  * Presents the authorized sector state: starfield, asteroids, the ship with its
@@ -26,8 +36,10 @@ const FPS_WINDOW_MS = 1000;
  */
 export class SectorScene extends Phaser.Scene {
   #bridge!: SectorBridge;
-  #ship!: Phaser.GameObjects.Container;
+  /** Created from the first state, which names the ship. */
+  #ship: Phaser.GameObjects.Container | null = null;
   #helmConsole!: Phaser.GameObjects.Rectangle;
+  #minimap: Minimap | null = null;
   #stars!: Phaser.GameObjects.TileSprite;
   #fpsText!: Phaser.GameObjects.Text;
   #fpsWindowStart: number | null = null;
@@ -44,30 +56,12 @@ export class SectorScene extends Phaser.Scene {
   }
 
   create(): void {
-    const sector = SECTORS[SectorId.Dev];
     this.#createStarTexture();
     this.#stars = this.add
       .tileSprite(0, 0, this.scale.width, this.scale.height, STAR_TEXTURE)
       .setOrigin(0)
       .setScrollFactor(0);
 
-    const world = this.add.graphics();
-    const { bounds } = sector;
-    world.lineStyle(4, PALETTE.sectorEdge, 1);
-    world.strokeRect(
-      bounds.minX,
-      bounds.minY,
-      bounds.maxX - bounds.minX,
-      bounds.maxY - bounds.minY,
-    );
-    for (const obstacle of sector.obstacles) {
-      world.fillStyle(PALETTE.asteroid, 1);
-      world.fillCircle(obstacle.x, obstacle.y, obstacle.radius);
-      world.lineStyle(3, PALETTE.asteroidEdge, 1);
-      world.strokeCircle(obstacle.x, obstacle.y, obstacle.radius);
-    }
-
-    this.#ship = this.#createShip();
     this.#fpsText = this.add
       .text(12, 12, '', { fontFamily: 'monospace', fontSize: '14px', color: '#9fb3cf' })
       .setScrollFactor(0)
@@ -75,6 +69,7 @@ export class SectorScene extends Phaser.Scene {
 
     this.scale.on(Phaser.Scale.Events.RESIZE, (size: Phaser.Structs.Size) => {
       this.#stars.setSize(size.width, size.height);
+      this.#placeMinimap(size.height);
     });
     this.#controls = new KeyboardControls(this);
     const { KeyCodes } = Phaser.Input.Keyboard;
@@ -84,13 +79,19 @@ export class SectorScene extends Phaser.Scene {
 
   override update(time: number): void {
     this.#sendIntent();
+    if (!this.#minimap) {
+      const layout = this.#bridge.layout();
+      if (layout) this.#createSector(layout);
+    }
     const snapshot = this.#bridge.sample(performance.now());
     if (snapshot) {
       const { ship } = snapshot;
+      this.#ship ??= this.#createShip(isShipHullId(ship.hullId) ? ship.hullId : ShipHullId.Scout);
       this.#ship.setPosition(ship.x, ship.y).setRotation(ship.angle);
       this.#helmConsole.setFillStyle(ship.operatorId ? PALETTE.consoleBusy : PALETTE.console);
-      this.#syncCrew(snapshot.crew, ship.x, ship.y, ship.angle);
+      this.#syncCrew(this.#ship, snapshot.crew, ship.x, ship.y, ship.angle);
       this.cameras.main.centerOn(ship.x, ship.y);
+      this.#minimap?.ship.setPosition(...this.#toMinimap(ship.x, ship.y)).setRotation(ship.angle);
     }
     const camera = this.cameras.main;
     this.#stars.setTilePosition(camera.scrollX * STAR_PARALLAX, camera.scrollY * STAR_PARALLAX);
@@ -136,9 +137,99 @@ export class SectorScene extends Phaser.Scene {
     g.destroy();
   }
 
-  #createShip(): Phaser.GameObjects.Container {
-    const hull = SHIP_HULLS[ShipHullId.Scout];
-    const container = this.add.container(0, 0);
+  /** Draws the static geometry once: edge, asteroids, containers and extraction zones. */
+  #createSector(layout: SectorLayout): void {
+    const { bounds } = layout;
+    const world = this.add.graphics().setDepth(0);
+    for (const zone of layout.extractionZones) {
+      world.fillStyle(PALETTE.extraction, 0.12);
+      world.fillCircle(zone.x, zone.y, zone.radius);
+      world.lineStyle(4, PALETTE.extractionEdge, 0.8);
+      world.strokeCircle(zone.x, zone.y, zone.radius);
+      this.#worldLabel(zone.x, zone.y, 'Extração', '#8de8b0');
+    }
+    world.lineStyle(4, PALETTE.sectorEdge, 1);
+    world.strokeRect(
+      bounds.minX,
+      bounds.minY,
+      bounds.maxX - bounds.minX,
+      bounds.maxY - bounds.minY,
+    );
+    for (const asteroid of layout.asteroids) {
+      world.fillStyle(PALETTE.asteroid, 1);
+      world.fillCircle(asteroid.x, asteroid.y, asteroid.radius);
+      world.lineStyle(3, PALETTE.asteroidEdge, 1);
+      world.strokeCircle(asteroid.x, asteroid.y, asteroid.radius);
+    }
+    for (const container of layout.containers) {
+      // The outline is the solid circle the ship collides with; the square marks a crate.
+      const side = container.radius * Math.SQRT2;
+      world.fillStyle(PALETTE.container, 1);
+      world.fillCircle(container.x, container.y, container.radius);
+      world.lineStyle(3, PALETTE.containerEdge, 1);
+      world.strokeCircle(container.x, container.y, container.radius);
+      world.strokeRect(container.x - side / 2, container.y - side / 2, side, side);
+      this.#worldLabel(container.x, container.y - container.radius - 8, 'Contêiner', '#ffd08a');
+    }
+    this.#createMinimap(layout);
+  }
+
+  #worldLabel(x: number, y: number, text: string, color: string): void {
+    this.add
+      .text(x, y, text, { ...LABEL_STYLE, color })
+      .setOrigin(0.5, 1)
+      .setDepth(0);
+  }
+
+  /** Whole sector in a corner: drawn once; only the ship marker moves. */
+  #createMinimap(layout: SectorLayout): void {
+    const { bounds } = layout;
+    const scale = MINIMAP_SIZE / Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+    const at = (x: number, y: number): [number, number] => [
+      (x - bounds.minX) * scale,
+      (y - bounds.minY) * scale,
+    ];
+    const map = this.add.graphics().setScrollFactor(0).setDepth(10);
+    map.fillStyle(PALETTE.minimap, 0.85);
+    map.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+    map.lineStyle(1, PALETTE.sectorEdge, 1);
+    map.strokeRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+    for (const zone of layout.extractionZones) {
+      map.fillStyle(PALETTE.extraction, 0.5);
+      map.fillCircle(...at(zone.x, zone.y), Math.max(3, zone.radius * scale));
+    }
+    map.fillStyle(PALETTE.asteroidEdge, 0.8);
+    for (const asteroid of layout.asteroids) {
+      map.fillCircle(...at(asteroid.x, asteroid.y), Math.max(1, asteroid.radius * scale));
+    }
+    map.fillStyle(PALETTE.containerEdge, 1);
+    for (const container of layout.containers) {
+      const [x, y] = at(container.x, container.y);
+      map.fillRect(x - 2, y - 2, 5, 5);
+    }
+    const ship = this.add
+      // Nose to the right; the default origin centers it on the ship.
+      .triangle(0, 0, 10, 4, 0, 0, 0, 8, PALETTE.self)
+      .setScrollFactor(0)
+      .setDepth(11);
+    this.#minimap = { map, ship, at };
+    this.#placeMinimap(this.scale.height);
+  }
+
+  #placeMinimap(screenHeight: number): void {
+    this.#minimap?.map.setPosition(MINIMAP_MARGIN, screenHeight - MINIMAP_MARGIN - MINIMAP_SIZE);
+  }
+
+  #toMinimap(x: number, y: number): [number, number] {
+    const minimap = this.#minimap;
+    if (!minimap) return [0, 0];
+    const [mapX, mapY] = minimap.at(x, y);
+    return [minimap.map.x + mapX, minimap.map.y + mapY];
+  }
+
+  #createShip(hullId: ShipHullId): Phaser.GameObjects.Container {
+    const hull = SHIP_HULLS[hullId];
+    const container = this.add.container(0, 0).setDepth(1);
 
     const body = this.add.graphics();
     body.fillStyle(PALETTE.hull, 1);
@@ -179,6 +270,7 @@ export class SectorScene extends Phaser.Scene {
   }
 
   #syncCrew(
+    ship: Phaser.GameObjects.Container,
     crew: ReadonlyMap<string, CrewSnapshot>,
     shipX: number,
     shipY: number,
@@ -194,7 +286,7 @@ export class SectorScene extends Phaser.Scene {
     for (const member of crew.values()) {
       let view = this.#crew.get(member.id);
       if (!view) {
-        view = this.#createCrewView(member);
+        view = this.#createCrewView(ship, member);
         this.#crew.set(member.id, view);
       }
       view.body.setPosition(member.x, member.y).setAlpha(member.connected ? 1 : 0.4);
@@ -206,11 +298,11 @@ export class SectorScene extends Phaser.Scene {
     }
   }
 
-  #createCrewView(member: CrewSnapshot): CrewView {
+  #createCrewView(ship: Phaser.GameObjects.Container, member: CrewSnapshot): CrewView {
     const isSelf = member.id === this.#bridge.sessionId;
     const body = this.add.circle(member.x, member.y, CREW.radius, crewColor(member.colorIndex));
     if (isSelf) body.setStrokeStyle(2, PALETTE.self, 1);
-    this.#ship.add(body);
+    ship.add(body);
     const label = this.add
       .text(0, 0, member.name, {
         fontFamily: 'system-ui, sans-serif',

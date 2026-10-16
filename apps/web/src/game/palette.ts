@@ -15,6 +15,11 @@ export const PALETTE = {
   consoleBusy: 0xff6b6b,
   seat: 0xffc857,
   self: 0xffffff,
+  container: 0xb07a3a,
+  containerEdge: 0xffd08a,
+  extraction: 0x4caf7a,
+  extractionEdge: 0x8de8b0,
+  minimap: 0x0a1120,
 } as const;
 
 const CREW_COLORS: readonly number[] = APPEARANCE_COLOR_ORDER.map(
