@@ -12,6 +12,7 @@ import {
 } from '@orbit/database';
 import type pg from 'pg';
 import { type GameServices, createGameServer } from '../src/app';
+import { ExpeditionService } from '../src/modules/expedition/expedition-service';
 import { type IdentityPolicy, IdentityService } from '../src/modules/identity/identity-service';
 import { type PasswordHasher, createArgon2Hasher } from '../src/modules/identity/password-hasher';
 import { configureProcessCors } from '../src/transport/http/cors-policy';
@@ -20,6 +21,7 @@ export const ALLOWED_ORIGIN = 'http://localhost:5173';
 
 export interface ApiServer {
   readonly baseUrl: string;
+  readonly expeditions: ExpeditionService;
   readonly pool: pg.Pool;
   readonly db: Database;
   readonly hasher: PasswordHasher;
@@ -31,12 +33,15 @@ export interface ApiServer {
 export async function startApiServer(
   policy: IdentityPolicy,
   services: Partial<GameServices> = {},
+  options: { readonly prepareSeconds?: number } = {},
 ): Promise<ApiServer> {
   const throwaway = await createThrowawayDatabase(readDatabaseUrl(), 'orbit_api_test');
   const pool = createPool({ connectionString: throwaway.url, max: 8 });
   let server: Server | undefined;
+  let expeditions: ExpeditionService | undefined;
   const close = async () => {
     try {
+      expeditions?.close();
       await server?.gracefullyShutdown(false);
       await pool.end();
     } finally {
@@ -46,6 +51,7 @@ export async function startApiServer(
   try {
     await runMigrations(pool);
     const db = createDatabase(pool);
+    expeditions = new ExpeditionService(db, options);
     const hasher = createArgon2Hasher({ maxConcurrent: 2, maxQueue: 64 });
     const allowedOrigins = new Set([ALLOWED_ORIGIN]);
     configureProcessCors({ allowedOrigins, allowMissingOrigin: true });
@@ -66,12 +72,13 @@ export async function startApiServer(
         classPreferences: {
           save: (accountId, classId) => updateProfileClass(db, accountId, classId),
         },
+        expeditions,
         ...services,
       },
     );
     await server.listen(0, '127.0.0.1');
     const address = server.transport.server?.address() as AddressInfo;
-    return { baseUrl: `http://127.0.0.1:${address.port}`, pool, db, hasher, close };
+    return { baseUrl: `http://127.0.0.1:${address.port}`, expeditions, pool, db, hasher, close };
   } catch (error) {
     await close();
     throw error;

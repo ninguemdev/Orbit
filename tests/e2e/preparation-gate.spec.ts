@@ -65,8 +65,11 @@ test('two accounts prepare together and keep their choices after signing in agai
       await expect(page.getByRole('button', { name: 'Não estou pronto' })).toBeVisible();
     }
     await alfa.page.getByRole('button', { name: 'Confirmar preparação' }).click();
+    // The confirmation reserves both loadouts in the stash.
     for (const { page } of [alfa, bravo]) {
       await expect(page.getByTestId('party-confirmed')).toBeVisible();
+      await expect(page.getByTestId('expedition-preparing')).toBeVisible();
+      await expect(page.getByTestId('stash')).toContainText('(reservado)');
     }
   });
 
@@ -97,6 +100,11 @@ test('two accounts prepare together and keep their choices after signing in agai
       await expect(
         page.getByTestId('loadout').locator('[data-testid^="loadout-issue-"]'),
       ).toHaveCount(0);
+    }
+    // Signing out left the party, which cancelled the preparation and returned the items.
+    for (const { page } of [alfa, bravo]) {
+      await expect(page.getByTestId('stash')).not.toContainText('(reservado)');
+      await expect(page.getByTestId('expedition-preparing')).toHaveCount(0);
     }
     await expect(alfa.page.getByTestId('ships')).toHaveText('Naves liberadas: Batedora');
     await expect(bravo.page.getByTestId('ships')).toHaveText(

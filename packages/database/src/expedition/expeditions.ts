@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   CATALOG_VERSION,
   type ClassId,
@@ -362,6 +362,17 @@ export async function cancelPreparation(
       .where(eq(expeditions.id, expeditionId));
     return 'cancelled';
   });
+}
+
+/** Expeditions still waiting to start, oldest deadline first (recovery after a restart). */
+export async function listPreparingExpeditions(
+  db: Database,
+): Promise<{ readonly expeditionId: string; readonly prepareDeadlineAt: Date }[]> {
+  return db
+    .select({ expeditionId: expeditions.id, prepareDeadlineAt: expeditions.prepareDeadlineAt })
+    .from(expeditions)
+    .where(eq(expeditions.state, 'PREPARING'))
+    .orderBy(asc(expeditions.prepareDeadlineAt));
 }
 
 export interface ActiveExpedition {

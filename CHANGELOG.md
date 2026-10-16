@@ -6,7 +6,8 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 
 ### Adicionado
 
-- Reserva atômica de expedição no banco (migração `0007_expeditions`): expedição `PREPARING` com chave de início idempotente, snapshot de classe e loadout de cada membro, participação ativa única por conta e reserva única por item, revalidando classe, loadout e licença da nave sob lock. Cancelar a preparação devolve as reservas. Ainda não é chamada pela party.
+- Reserva atômica de expedição no banco (migração `0007_expeditions`): expedição `PREPARING` com chave de início idempotente, snapshot de classe e loadout de cada membro, participação ativa única por conta e reserva única por item, revalidando classe, loadout e licença da nave sob lock. Cancelar a preparação devolve as reservas.
+- A confirmação do líder reserva os loadouts da party numa expedição `PREPARING`. O stash mostra os itens reservados, o loadout fica travado e qualquer mudança na party cancela a preparação e devolve os itens. Sem sala da missão ainda, a preparação expira em 30 s; ao reiniciar, o servidor cancela as preparações deixadas pelo processo anterior.
 
 ### Alterado
 

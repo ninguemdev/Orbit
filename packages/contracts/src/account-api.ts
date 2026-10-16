@@ -103,6 +103,8 @@ export interface InventoryResponse {
     readonly instanceId: string;
     readonly itemId: string;
     readonly quantity: number;
+    /** Taken to an expedition: still in the stash, but not available until it ends. */
+    readonly reserved: boolean;
   }[];
   readonly inbox: readonly {
     readonly entryId: string;

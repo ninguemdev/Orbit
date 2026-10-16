@@ -12,6 +12,7 @@ import { defineDevSectorRoom } from './transport/dev-sector-room';
 import { createAccountApi } from './transport/http/account-routes';
 import { type ClassPreferences, definePartyRoom } from './transport/party-room';
 import { LoadoutService } from './modules/loadout/loadout-service';
+import type { ExpeditionStarter } from './modules/expedition/expedition-service';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -23,6 +24,8 @@ export interface GameServices {
   readonly classPreferences?: ClassPreferences;
   /** Database for inventory routes. */
   readonly db?: Database;
+  /** Reserves the loadouts of confirmed parties (needs the database). */
+  readonly expeditions?: ExpeditionStarter;
   /** Invite code attempts allowed per address (PARTY_CODE_GUESSES_PER_ADDRESS). */
   readonly codeGuessesPerAddress?: number;
 }
@@ -90,6 +93,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
       directory,
       ...(services.classPreferences ? { classPreferences: services.classPreferences } : {}),
       ...(loadouts ? { loadouts } : {}),
+      ...(services.expeditions ? { expeditions: services.expeditions } : {}),
     }),
   );
   return server;

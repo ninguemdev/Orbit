@@ -119,9 +119,10 @@ Cada jogador escolhe a própria classe para a próxima missão (Piloto, Engenhei
 Para preparar a missão:
 
 - **Inventário:** toda conta começa com 200 créditos e a licença da Batedora. Para ter itens de teste, rode `pnpm db:seed-dev <nick>` e clique em **Atualizar** no inventário.
-- **Loadout:** escolha arma principal, arma secundária, ferramenta e até 8 itens de mochila entre os itens do seu stash e clique em **Salvar loadout**. O servidor recusa item de outra conta, espaço errado e arma de outra classe. Os itens continuam no stash; a reserva para a partida começa na 0.3.
+- **Loadout:** escolha arma principal, arma secundária, ferramenta e até 8 itens de mochila entre os itens do seu stash e clique em **Salvar loadout**. O servidor recusa item de outra conta, espaço errado e arma de outra classe. Os itens continuam no stash e só ficam reservados quando o líder confirma a preparação.
 - **Nave:** a party pode usar qualquer nave liberada por um dos membros, e o painel mostra quem libera cada uma. O líder escolhe.
 - **Prontidão:** cada membro clica em **Estou pronto**, e o líder clica em **Confirmar preparação** quando todos estiverem prontos. Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos.
+- **Reserva:** a confirmação cria a expedição no servidor e reserva os itens de todos os loadouts, marcados como **(reservado)** no stash. Enquanto a preparação vale, ninguém troca o loadout. Qualquer mudança na party (alguém sair, ficar "não pronto", trocar classe ou nave) cancela a preparação e devolve os itens. Como a sala da partida ainda não existe, a preparação expira depois de 30 s e os itens voltam ao stash.
 
 ### API de conta
 
@@ -154,7 +155,7 @@ Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGIN
 - Um único setor fixo, um casco de nave e colisão por círculos contra asteroides. Não há dano, boost, consoles extras, EVA nem combate.
 - A sala de desenvolvimento ainda não valida a sessão: o nick da conta é usado como rótulo, e o roster autenticado chega na V03.02.
 - Parties ficam na memória do processo de jogo: reiniciar o servidor desfaz as parties e a prontidão (conta, classe, inventário, licenças e loadout permanecem).
-- A preparação confirmada ainda não inicia uma missão: a partida com a party, a reserva dos itens e o retorno da mochila chegam na 0.3.
+- A preparação confirmada reserva os itens, mas ainda não abre a partida: a sala da missão com a party chega na V03.02. Até lá, toda preparação expira em 30 s e devolve os itens. Ao reiniciar, o servidor cancela no prazo as preparações que o processo anterior deixou.
 - Licença de nave ganha durante a party aparece ao entrar de novo em uma party.
 - Sem e-mail: quem perder a senha e não tiver gerado o código de recuperação não recupera a conta.
 - Sem deploy, HTTPS nem proxy. Use apenas em ambiente de desenvolvimento.

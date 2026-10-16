@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER } from '@orbit/catalog';
 import type { PartyPanelProps } from './PartyPanel';
 import { shipName } from './catalog-names';
@@ -84,14 +85,15 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
       <fieldset className="class-picker" data-testid="party-readiness">
         <legend>Prontidão</legend>
         <p className="hint">
-          Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos. A
-          missão e a reserva dos itens começam na 0.3.
+          Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos.
+          Ao confirmar, o servidor reserva os itens dos loadouts para a missão.
         </p>
         {view.confirmedRevision === view.revision ? (
           <p className="notice" data-testid="party-confirmed">
             Preparação confirmada pelo líder.
           </p>
         ) : null}
+        {view.expedition ? <PreparationStatus deadline={view.expedition.prepareDeadline} /> : null}
         <button
           type="button"
           onClick={() => party.setReady(view.revision, !me?.ready)}
@@ -110,5 +112,24 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
         ) : null}
       </fieldset>
     </section>
+  );
+}
+
+/**
+ * Reserved items waiting for the match. The match room arrives in the next step of
+ * 0.3; until then the server cancels the preparation at its deadline.
+ */
+function PreparationStatus({ deadline }: { deadline: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.ceil((deadline - now) / 1000));
+  return (
+    <p className="notice" data-testid="expedition-preparing">
+      Itens reservados para a missão. A partida com a party ainda não abre nesta versão: a
+      preparação expira em {seconds} s e os itens voltam ao stash.
+    </p>
   );
 }

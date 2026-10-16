@@ -164,7 +164,7 @@ export function LoadoutPanel({
       <h2>Loadout da próxima missão</h2>
       <p className="hint">
         Classe: {serverClass && isClassId(serverClass) ? CLASS_NAMES[serverClass] : 'não escolhida'}
-        . Os itens continuam no stash; a reserva para a partida começa na 0.3.
+        . Os itens continuam no stash; ao confirmar a preparação, ficam reservados para a missão.
       </p>
       {error ? (
         <p role="alert" className="error">

@@ -214,8 +214,9 @@ export function App() {
           </header>
           <p className="hint">
             Prepare a próxima missão: forme a party, escolha classe, loadout e nave e confirme a
-            prontidão. A missão com a party começa na 0.3; &quot;Entrar na sala&quot; abre a sala de
-            testes da 0.1, compartilhada por todos e sem a sua party.
+            prontidão. A confirmação reserva os itens; a partida com a party ainda não abre nesta
+            versão. &quot;Entrar na sala&quot; abre a sala de testes da 0.1, compartilhada por todos
+            e sem a sua party.
           </p>
           {screen.kind === 'home' && screen.error ? (
             <p role="alert" className="error">
@@ -244,6 +245,7 @@ export function App() {
                   me.profile.classId ??
                   ''
                 }
+                expeditionId={party.view?.expedition?.id ?? ''}
               />
             </div>
           </div>

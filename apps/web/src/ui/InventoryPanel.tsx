@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { LoadoutPanel } from './LoadoutPanel';
 import { itemName, shipName } from './catalog-names';
 import { type InventoryControls, useInventory } from './use-inventory';
@@ -31,6 +32,7 @@ export function InventoryPanel({ inventory: controls }: { inventory: InventoryCo
                 <li key={entry.instanceId}>
                   {itemName(entry.itemId)}
                   {entry.quantity > 1 ? ` ×${entry.quantity}` : ''}
+                  {entry.reserved ? <span className="hint"> (reservado)</span> : null}
                 </li>
               ))}
             </ul>
@@ -65,8 +67,22 @@ export function InventoryPanel({ inventory: controls }: { inventory: InventoryCo
 }
 
 /** Inventory and loadout of the signed-in account, sharing one inventory read. */
-export function PreparationPanels({ classId }: { classId: string }) {
+export function PreparationPanels({
+  classId,
+  expeditionId,
+}: {
+  classId: string;
+  /** Reserved expedition of the party, if any: its start and end change the stash. */
+  expeditionId: string;
+}) {
   const inventory = useInventory();
+  const { reload } = inventory;
+  const seen = useRef(expeditionId);
+  useEffect(() => {
+    if (seen.current === expeditionId) return;
+    seen.current = expeditionId;
+    void reload();
+  }, [expeditionId, reload]);
   return (
     <>
       <InventoryPanel inventory={inventory} />

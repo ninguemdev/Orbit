@@ -53,6 +53,8 @@ export interface StashEntry {
   readonly itemId: string;
   readonly quantity: number;
   readonly durability: number | null;
+  /** Taken to an expedition: still in the stash, but not available. */
+  readonly reserved: boolean;
 }
 
 export interface InboxEntry {
@@ -89,9 +91,11 @@ export async function getInventory(db: Database, accountId: string): Promise<Inv
           itemId: itemInstances.itemId,
           quantity: itemInstances.quantity,
           durability: itemInstances.durability,
+          reserved: sql<boolean>`${itemReservations.itemInstanceId} IS NOT NULL`,
         })
         .from(inventorySlots)
         .innerJoin(itemInstances, eq(itemInstances.id, inventorySlots.itemInstanceId))
+        .leftJoin(itemReservations, eq(itemReservations.itemInstanceId, itemInstances.id))
         .where(eq(inventorySlots.accountId, accountId))
         .orderBy(asc(inventorySlots.slot));
       const inbox = await tx

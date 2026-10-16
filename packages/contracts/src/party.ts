@@ -41,7 +41,14 @@ export const PartyClientMessage = {
 export const PartyServerMessage = {
   InviteReceived: 'party.invite.received',
   Refused: 'party.refused',
+  /** The confirmed expedition ended before starting; the reserved items are back. */
+  ExpeditionEnded: 'party.expedition.ended',
 } as const;
+
+export interface ExpeditionEndedNotice {
+  /** `expired`: no match started before the deadline; `party_changed`: the party changed. */
+  readonly reason: 'expired' | 'party_changed';
+}
 
 export const partyInviteSchema = z.strictObject({ nick: nickSchema });
 export const partyMemberTargetSchema = z.strictObject({ accountId: z.uuid() });
@@ -81,6 +88,8 @@ export const PartyErrorCode = {
   MembersNotReady: 'members_not_ready',
   /** The saved loadouts could not be read now; nothing changed. */
   PreparationUnavailable: 'preparation_unavailable',
+  /** A member is already in another expedition. */
+  MemberInExpedition: 'member_in_expedition',
 } as const;
 export type PartyErrorCode = (typeof PartyErrorCode)[keyof typeof PartyErrorCode];
 
@@ -123,6 +132,12 @@ export interface PartyStateView {
   readonly revision: number;
   /** Revision whose roster the leader confirmed; 0 when there is no valid confirmation. */
   readonly confirmedRevision: number;
+  /** Expedition created by the confirmation; empty when there is none. */
+  readonly expeditionId: string;
+  /** `PREPARING` while the reserved items wait for the match; empty when there is none. */
+  readonly expeditionState: string;
+  /** Server time (ms since the epoch) when an unstarted preparation is cancelled. */
+  readonly prepareDeadline: number;
   readonly members: {
     forEach(cb: (member: PartyMemberView, accountId: string) => void): void;
     readonly size: number;
