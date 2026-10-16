@@ -26,6 +26,10 @@ export const appMetadata = pgTable('app_metadata', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Constant values as a SQL list for IN checks, e.g. `'a', 'b'`. */
+const quoted = (values: readonly string[]) =>
+  sql.raw(values.map((value) => `'${value}'`).join(', '));
+
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 /** Refreshed by a BEFORE UPDATE trigger (migration 0002), using the database clock. */
 const updatedAt = () => timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
@@ -159,6 +163,13 @@ export const itemInstances = pgTable(
   },
   (table) => [
     unique('item_instances_id_owner_location').on(table.id, table.ownerAccountId, table.location),
+    // Target of item_reservations: a reserved stack cannot change quantity or place.
+    unique('item_instances_id_owner_location_quantity').on(
+      table.id,
+      table.ownerAccountId,
+      table.location,
+      table.quantity,
+    ),
     index('item_instances_owner_idx').on(table.ownerAccountId),
     check('item_instances_item_id_format', sql`${table.itemId} ~ '^item\\.[a-z0-9_.]+$'`),
     check('item_instances_quantity_positive', sql`${table.quantity} > 0`),
@@ -245,10 +256,7 @@ export const loadoutItems = pgTable(
       foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
     }).onDelete('cascade'),
     // Derived from the catalog: changing the slots shows up as schema drift.
-    check(
-      'loadout_items_slot_known',
-      sql`${table.slot} IN (${sql.raw(LOADOUT_SLOTS.map((slot) => `'${slot}'`).join(', '))})`,
-    ),
+    check('loadout_items_slot_known', sql`${table.slot} IN (${quoted(LOADOUT_SLOTS)})`),
     check('loadout_items_location_stash', sql`${table.location} = 'stash'`),
   ],
 );
@@ -288,8 +296,6 @@ export const TERMINAL_EXPEDITION_STATES = [
   'FAILED',
   'ABORTED_TECHNICAL',
 ] as const satisfies readonly ExpeditionState[];
-const quoted = (values: readonly string[]) =>
-  sql.raw(values.map((value) => `'${value}'`).join(', '));
 
 /**
  * One match of one party. Created in PREPARING by the leader's confirmation; the
@@ -303,9 +309,10 @@ export const expeditions = pgTable(
     state: text('state').notNull().default('PREPARING'),
     startKey: text('start_key').notNull(),
     requestHash: text('request_hash').notNull(),
+    /** Restrict: deleting the leader must not erase the other members' history. */
     leaderAccountId: uuid('leader_account_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
+      .references(() => accounts.id, { onDelete: 'restrict' }),
     shipId: text('ship_id').notNull(),
     catalogVersion: integer('catalog_version').notNull(),
     /** A PREPARING expedition past this moment is cancelled and its items returned. */
@@ -373,8 +380,8 @@ export const activeParticipations = pgTable(
 
 /**
  * Items taken to an expedition. The primary key on the item reserves it at most once;
- * the item must be in its owner's stash and cannot be deleted while reserved, and a
- * reservation cannot outlive its owner's active participation.
+ * the whole stack must be in its owner's stash and stays as it was while reserved, and
+ * a reservation cannot outlive its owner's active participation.
  */
 export const itemReservations = pgTable(
   'item_reservations',
@@ -383,17 +390,24 @@ export const itemReservations = pgTable(
     expeditionId: uuid('expedition_id').notNull(),
     accountId: uuid('account_id').notNull(),
     slot: text('slot').notNull(),
-    /** The whole stack is taken; grants do not top up a reserved stack. */
+    /** The whole stack is taken; it must match the instance (see the foreign key). */
     quantity: integer('quantity').notNull(),
     location: text('location').notNull().default('stash'),
   },
   (table) => [
     unique('item_reservations_member_slot').on(table.expeditionId, table.accountId, table.slot),
     index('item_reservations_participation_idx').on(table.accountId, table.expeditionId),
+    // Includes the quantity: while reserved, the stack cannot be deleted, moved out of
+    // the stash or change size, whatever code tries it.
     foreignKey({
       name: 'item_reservations_item_owned_in_stash',
-      columns: [table.itemInstanceId, table.accountId, table.location],
-      foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
+      columns: [table.itemInstanceId, table.accountId, table.location, table.quantity],
+      foreignColumns: [
+        itemInstances.id,
+        itemInstances.ownerAccountId,
+        itemInstances.location,
+        itemInstances.quantity,
+      ],
     }).onDelete('restrict'),
     foreignKey({
       name: 'item_reservations_participation',

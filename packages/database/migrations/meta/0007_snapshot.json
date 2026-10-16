@@ -1,5 +1,5 @@
 {
-  "id": "5ac1c5e3-a2a9-4264-b331-61204e4fcd45",
+  "id": "74c09f6d-61ad-4589-a253-e2d703caa5af",
   "prevId": "c528a21a-1f1e-4bcd-9f98-0dd53fc0224e",
   "version": "7",
   "dialect": "postgresql",
@@ -492,7 +492,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -841,6 +841,16 @@
             "owner_account_id",
             "location"
           ]
+        },
+        "item_instances_id_owner_location_quantity": {
+          "name": "item_instances_id_owner_location_quantity",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "owner_account_id",
+            "location",
+            "quantity"
+          ]
         }
       },
       "policies": {},
@@ -937,12 +947,14 @@
           "columnsFrom": [
             "item_instance_id",
             "account_id",
-            "location"
+            "location",
+            "quantity"
           ],
           "columnsTo": [
             "id",
             "owner_account_id",
-            "location"
+            "location",
+            "quantity"
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"

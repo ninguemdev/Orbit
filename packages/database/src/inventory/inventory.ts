@@ -133,6 +133,21 @@ export async function lockAccount(tx: Executor, accountId: string): Promise<bool
   return rows.rowCount === 1;
 }
 
+/**
+ * Locks several accounts in one statement, in ID order, so two callers locking
+ * overlapping sets cannot deadlock. Returns the IDs that do not exist.
+ */
+export async function lockAccounts(tx: Executor, accountIds: readonly string[]): Promise<string[]> {
+  if (accountIds.length === 0) return [];
+  const rows = await tx.execute<{ id: string }>(
+    sql`SELECT ${accounts.id} AS id FROM ${accounts}
+        WHERE ${inArray(accounts.id, [...accountIds])}
+        ORDER BY ${accounts.id} FOR NO KEY UPDATE`,
+  );
+  const found = new Set(rows.rows.map((row) => row.id));
+  return accountIds.filter((id) => !found.has(id));
+}
+
 export interface GrantItem {
   readonly accountId: string;
   readonly itemId: string;

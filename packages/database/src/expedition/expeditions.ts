@@ -9,10 +9,11 @@ import {
 } from '@orbit/catalog';
 import { PARTY_MAX_MEMBERS } from '@orbit/contracts';
 import type { Database } from '../client';
-import { type Executor, lockAccount } from '../inventory/inventory';
+import { type Executor, lockAccounts } from '../inventory/inventory';
 import type { LoadoutPick } from '../inventory/loadout';
 import {
   type ExpeditionState,
+  TERMINAL_EXPEDITION_STATES,
   activeParticipations,
   expeditionMembers,
   expeditions,
@@ -25,6 +26,11 @@ import {
 
 /** Time the party has to load into the match before the preparation is cancelled (docs/06). */
 export const PREPARE_SECONDS = 30;
+/** Longest preparation a caller may ask for. */
+export const MAX_PREPARE_SECONDS = 600;
+
+/** Account IDs as the database writes them (lowercase), so sorting and comparing agree. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface ExpeditionMemberRequest {
   readonly accountId: string;
@@ -71,6 +77,14 @@ export type StartExpeditionResult =
       readonly reason: StartExpeditionRefusal;
       /** Members the refusal is about (empty when it concerns the whole request). */
       readonly accountIds: readonly string[];
+    }
+  | {
+      /** A retry of a request whose expedition already ended (e.g. its preparation expired). */
+      readonly ok: false;
+      readonly reason: 'expedition_ended';
+      readonly expeditionId: string;
+      readonly state: ExpeditionState;
+      readonly accountIds: readonly string[];
     };
 
 export interface ReservedItem {
@@ -82,6 +96,8 @@ export interface ReservedItem {
 
 const slotOrder = (slot: string) => (LOADOUT_SLOTS as readonly string[]).indexOf(slot);
 const bySlot = (a: { slot: string }, b: { slot: string }) => slotOrder(a.slot) - slotOrder(b.slot);
+/** Code-unit order, independent of locale; matches the database order of lowercase UUIDs. */
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Hash of everything the request asks for, in a canonical order. */
 function requestHash(request: StartExpeditionRequest): string {
@@ -89,7 +105,7 @@ function requestHash(request: StartExpeditionRequest): string {
     leader: request.leaderAccountId,
     ship: request.shipId,
     members: [...request.members]
-      .sort((a, b) => a.accountId.localeCompare(b.accountId))
+      .sort((a, b) => byCodeUnit(a.accountId, b.accountId))
       .map((member) => ({
         accountId: member.accountId,
         classId: member.classId,
@@ -107,10 +123,12 @@ function isWellFormed(request: StartExpeditionRequest): boolean {
     request.startKey.length <= 200 &&
     ids.length >= 1 &&
     ids.length <= PARTY_MAX_MEMBERS &&
+    ids.every((id) => UUID.test(id)) &&
     new Set(ids).size === ids.length &&
     ids.includes(request.leaderAccountId) &&
     Number.isInteger(seconds) &&
-    seconds > 0
+    seconds > 0 &&
+    seconds <= MAX_PREPARE_SECONDS
   );
 }
 
@@ -136,10 +154,14 @@ async function existing(
     .where(eq(expeditions.startKey, request.startKey));
   if (!row) return null;
   if (row.requestHash !== hash) return refuse('key_reused');
+  const state = row.state as ExpeditionState;
+  if ((TERMINAL_EXPEDITION_STATES as readonly string[]).includes(state)) {
+    return { ok: false, reason: 'expedition_ended', expeditionId: row.id, state, accountIds: [] };
+  }
   return {
     ok: true,
     expeditionId: row.id,
-    state: row.state as ExpeditionState,
+    state,
     created: false,
     prepareDeadlineAt: row.prepareDeadlineAt,
   };
@@ -162,12 +184,11 @@ export async function startExpedition(
 ): Promise<StartExpeditionResult> {
   if (!isWellFormed(request)) return refuse('invalid_request');
   const hash = requestHash(request);
-  const accountIds = request.members.map((member) => member.accountId).sort();
+  const accountIds = request.members.map((member) => member.accountId).sort(byCodeUnit);
 
   return db.transaction(async (tx): Promise<StartExpeditionResult> => {
-    for (const accountId of accountIds) {
-      if (!(await lockAccount(tx, accountId))) return refuse('no_account', [accountId]);
-    }
+    const missing = await lockAccounts(tx, accountIds);
+    if (missing.length > 0) return refuse('no_account', missing);
     // A retry is answered before anything else: by now the members are in the
     // expedition it created, which would otherwise look like a conflict.
     const retry = await existing(tx, request, hash);
@@ -259,8 +280,13 @@ export async function startExpedition(
       })
       .onConflictDoNothing({ target: expeditions.startKey })
       .returning({ id: expeditions.id, prepareDeadlineAt: expeditions.prepareDeadlineAt });
-    // The key was taken by a request for other accounts that committed meanwhile.
-    if (!created) return (await existing(tx, request, hash)) ?? refuse('key_reused');
+    if (!created) {
+      // The key was taken by a request for other accounts that committed meanwhile
+      // (ON CONFLICT waits for it); in READ COMMITTED this statement sees that row.
+      const taken = await existing(tx, request, hash);
+      if (!taken) throw new Error('Chave de início em conflito sem expedição visível');
+      return taken;
+    }
 
     await tx.insert(expeditionMembers).values(
       request.members.map((member) => ({
@@ -307,14 +333,17 @@ export async function cancelPreparation(
   db: Database,
   expeditionId: string,
 ): Promise<CancelPreparationResult> {
+  if (!UUID.test(expeditionId)) return 'not_found';
   return db.transaction(async (tx): Promise<CancelPreparationResult> => {
     const members = await tx
       .select({ accountId: expeditionMembers.accountId })
       .from(expeditionMembers)
       .where(eq(expeditionMembers.expeditionId, expeditionId));
     // Same order as startExpedition: accounts first, then the expedition.
-    const accountIds = members.map((member) => member.accountId).sort();
-    for (const accountId of accountIds) await lockAccount(tx, accountId);
+    await lockAccounts(
+      tx,
+      members.map((member) => member.accountId),
+    );
     const rows = await tx.execute<{ state: string }>(
       sql`SELECT ${expeditions.state} AS state FROM ${expeditions}
           WHERE ${expeditions.id} = ${expeditionId} FOR UPDATE`,

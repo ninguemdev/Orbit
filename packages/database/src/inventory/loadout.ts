@@ -7,7 +7,7 @@ import {
   loadoutItemIssue,
 } from '@orbit/catalog';
 import type { Database } from '../client';
-import { itemInstances, loadoutItems, profiles } from '../schema';
+import { activeParticipations, itemInstances, loadoutItems, profiles } from '../schema';
 import { type Executor, lockAccount } from './inventory';
 
 export interface LoadoutPick {
@@ -37,7 +37,11 @@ export interface SlotIssue {
 export type SetLoadoutResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly issues: readonly SlotIssue[] }
-  | { readonly ok: false; readonly issues: null };
+  | {
+      readonly ok: false;
+      readonly issues: null;
+      readonly reason: 'no_account' | 'in_expedition';
+    };
 
 async function classOf(tx: Executor, accountId: string): Promise<ClassId | null> {
   const [row] = await tx
@@ -82,7 +86,9 @@ export async function getLoadout(db: Database, accountId: string): Promise<Loado
  * Replaces the whole loadout of the session's account. Every pick must be an item of
  * this account that is in its stash, fit the slot and the class; otherwise nothing
  * changes and each refused slot is reported. The stash itself is never modified.
- * `issues: null` means the account no longer exists.
+ * `issues: null` means the account no longer exists or is in an expedition: the loadout
+ * of an expedition is reserved and its snapshot is what the match uses, so it does not
+ * change until the expedition ends.
  */
 export async function setLoadout(
   db: Database,
@@ -90,7 +96,14 @@ export async function setLoadout(
   picks: readonly LoadoutPick[],
 ): Promise<SetLoadoutResult> {
   return db.transaction(async (tx): Promise<SetLoadoutResult> => {
-    if (!(await lockAccount(tx, accountId))) return { ok: false, issues: null };
+    if (!(await lockAccount(tx, accountId))) {
+      return { ok: false, issues: null, reason: 'no_account' };
+    }
+    const [participation] = await tx
+      .select({ expeditionId: activeParticipations.expeditionId })
+      .from(activeParticipations)
+      .where(eq(activeParticipations.accountId, accountId));
+    if (participation) return { ok: false, issues: null, reason: 'in_expedition' };
     const classId = await classOf(tx, accountId);
     const ids = [...new Set(picks.map((pick) => pick.instanceId))];
     // Only this account's stash is searched: another account's item, an inbox item

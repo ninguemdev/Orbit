@@ -272,12 +272,24 @@ describe('expedition start and reservations', () => {
     const alpha = await newPlayer();
     const bravo = await newPlayer();
     const base = request([alpha, bravo]);
+    const loadout = { classId: alpha.classId, loadout: alpha.loadout };
     const refusals = await Promise.all([
       startExpedition(t.db, { ...base, leaderAccountId: randomUUID() }),
       startExpedition(t.db, { ...base, members: [] }),
       startExpedition(t.db, { ...base, members: [...base.members, ...base.members] }),
       startExpedition(t.db, { ...base, startKey: '' }),
       startExpedition(t.db, { ...base, prepareSeconds: 0 }),
+      startExpedition(t.db, { ...base, prepareSeconds: 1e15 }),
+      // IDs the database would reject, or read as another member in another case.
+      startExpedition(t.db, {
+        ...base,
+        members: [{ ...loadout, accountId: 'abc' }],
+        leaderAccountId: 'abc',
+      }),
+      startExpedition(t.db, {
+        ...base,
+        members: [...base.members, { ...loadout, accountId: alpha.accountId.toUpperCase() }],
+      }),
     ]);
     for (const refusal of refusals) {
       expect(refusal).toEqual({ ok: false, reason: 'invalid_request', accountIds: [] });
@@ -310,12 +322,13 @@ describe('expedition start and reservations', () => {
     expect(ended.rows[0]?.state).toBe('CANCELLED');
     expect(ended.rows[0]?.ended_at).toBeInstanceOf(Date);
 
-    // A late retry of the old confirmation does not start it again.
-    expect(await startExpedition(t.db, first)).toMatchObject({
-      ok: true,
+    // A late retry of the old confirmation names the ended expedition and starts nothing.
+    expect(await startExpedition(t.db, first)).toEqual({
+      ok: false,
+      reason: 'expedition_ended',
       expeditionId: started.expeditionId,
       state: 'CANCELLED',
-      created: false,
+      accountIds: [],
     });
     expect(await getActiveExpedition(t.db, alpha.accountId)).toBeNull();
     // A new confirmation takes the same items again.
@@ -330,6 +343,15 @@ describe('expedition start and reservations', () => {
 
     const deletion = t.pool.query('DELETE FROM item_instances WHERE id = $1', [pistol?.instanceId]);
     await expect(deletion).rejects.toSatisfy(
+      (error: unknown) =>
+        postgresError(error)?.constraint === 'item_reservations_item_owned_in_stash',
+    );
+
+    // Any change to the reserved stack is refused by the schema, not only by grants.
+    const resize = t.pool.query('UPDATE item_instances SET quantity = 1 WHERE id = $1', [
+      medkits?.instanceId,
+    ]);
+    await expect(resize).rejects.toSatisfy(
       (error: unknown) =>
         postgresError(error)?.constraint === 'item_reservations_item_owned_in_stash',
     );
@@ -367,5 +389,38 @@ describe('expedition start and reservations', () => {
     await expect(orphan).rejects.toSatisfy(
       (error: unknown) => postgresError(error)?.constraint === 'item_reservations_participation',
     );
+  });
+
+  it('keeps the reserved loadout fixed until the expedition ends', async () => {
+    const alpha = await newPlayer();
+    const started = await startExpedition(t.db, request([alpha]));
+    if (!started.ok) throw new Error(started.reason);
+
+    expect(await setLoadout(t.db, alpha.accountId, [])).toEqual({
+      ok: false,
+      issues: null,
+      reason: 'in_expedition',
+    });
+    expect((await getActiveExpedition(t.db, alpha.accountId))?.reserved).toHaveLength(2);
+
+    expect(await cancelPreparation(t.db, started.expeditionId)).toBe('cancelled');
+    expect(await setLoadout(t.db, alpha.accountId, [])).toEqual({ ok: true });
+  });
+
+  it("keeps the other members' history when an account is deleted", async () => {
+    const leader = await newPlayer();
+    const member = await newPlayer();
+    const started = await startExpedition(t.db, request([leader, member]));
+    if (!started.ok) throw new Error(started.reason);
+    expect(await cancelPreparation(t.db, started.expeditionId)).toBe('cancelled');
+
+    const dropLeader = t.pool.query('DELETE FROM accounts WHERE id = $1', [leader.accountId]);
+    await expect(dropLeader).rejects.toSatisfy(
+      (error: unknown) =>
+        postgresError(error)?.constraint === 'expeditions_leader_account_id_accounts_id_fk',
+    );
+    await t.pool.query('DELETE FROM accounts WHERE id = $1', [member.accountId]);
+    expect(await count('expeditions', started.expeditionId)).toBe(1);
+    expect(await expeditionsOf(leader.accountId)).toBe(1);
   });
 });
