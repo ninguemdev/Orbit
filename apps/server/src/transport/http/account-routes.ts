@@ -29,6 +29,7 @@ import { STASH_SLOTS } from '@orbit/catalog';
 import type { LoadoutService } from '../../modules/loadout/loadout-service';
 import { clientAddressKey } from '../../infrastructure/client-address';
 import { OverloadedError } from '../../infrastructure/semaphore';
+import { SlidingWindowLimiter } from '../../infrastructure/sliding-window-limiter';
 import type { PartyAccess } from '../../modules/party/party-access';
 import type { MissionDirectory, MissionTicketStore } from '../../modules/mission/mission-directory';
 import type {
@@ -316,11 +317,16 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
 
   const { missions } = options;
   if (missions && db) {
+    // Same budget as party tickets: a member needs a few, a script gets nothing more.
+    const missionTickets = new SlidingWindowLimiter({ limit: 30, windowMs: 60 * 1000 });
     router.post(
       MissionRoute.Tickets,
       withSession(async (request, response, session) => {
         if (request.body !== undefined && !emptyBodySchema.safeParse(request.body).success) {
           return fail(response, AccountErrorCode.InvalidInput);
+        }
+        if (!missionTickets.tryConsume(session.accountId)) {
+          return fail(response, AccountErrorCode.RateLimited);
         }
         // The expedition comes from the session's account, never from the request.
         const active = await getActiveExpedition(db, session.accountId);

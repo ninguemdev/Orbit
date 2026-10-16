@@ -29,6 +29,9 @@ export interface MissionRoomOptions {
 
 type MissionClient = Client<{ auth: MissionTicket }>;
 
+/** Wait before trying again an activation the database failed. */
+const ACTIVATION_RETRY_MS = 1000;
+
 /**
  * The match of one expedition. Only its members enter, each with a single-use ticket
  * naming this room; the expedition becomes ACTIVE when the whole roster has loaded
@@ -49,6 +52,9 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   /** The expedition ended (cancelled or aborted): nothing more to do on dispose. */
   #ended = false;
   #unwatch: (() => void) | null = null;
+  /** onCreate finished; before that an end only marks the room (it cannot close yet). */
+  #ready = false;
+  #closing = false;
 
   /** Refuses everyone unless registered through `defineMissionRoom`. */
   static override async onAuth(
@@ -70,8 +76,15 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
       throw new ServerError(403, 'mission_rooms_are_created_by_the_server');
     }
     super.onCreate();
+    // Watching starts before the roster is read: a cancellation committed meanwhile
+    // is either seen in the roster or delivered to the watcher.
+    this.#unwatch = this.#deps.expeditions.watch(options.expeditionId, {
+      onCancelled: () => this.#close(MISSION_CANCELLED_CLOSE_CODE),
+      onAborted: () => this.#close(MISSION_ENDED_CLOSE_CODE),
+    });
     const roster = await this.#deps.expeditions.roster(options.expeditionId);
-    if (!roster || roster.state !== 'PREPARING') {
+    if (!roster || roster.state !== 'PREPARING' || this.#ended) {
+      this.#unwatch();
       throw new Error('Expedição sem preparação para abrir a sala');
     }
     this.#expeditionId = roster.expeditionId;
@@ -81,10 +94,8 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     await this.setPrivate(true);
     // The deadline, not an empty room, decides when an unstarted match is given up.
     this.autoDispose = false;
-    this.#unwatch = this.#deps.expeditions.watch(this.#expeditionId, {
-      onCancelled: () => this.#close(MISSION_CANCELLED_CLOSE_CODE),
-      onAborted: () => this.#close(MISSION_ENDED_CLOSE_CODE),
-    });
+    this.#ready = true;
+    if (this.#ended) this.#close(MISSION_CANCELLED_CLOSE_CODE);
   }
 
   override onJoin(client: MissionClient): void {
@@ -106,6 +117,16 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     this.addCrewMember(client.sessionId, this.#roster.get(ticket.accountId) ?? ticket.nick);
     this.syncState();
     if (this.#seats.size === this.#roster.size) void this.#activate();
+  }
+
+  /**
+   * Before the match starts, a dropped loader gives up the seat at once and enters
+   * again with a new ticket: holding it for the reconnection window would outlast the
+   * preparation deadline and count someone who is not there. After the match starts,
+   * the usual reconnection window applies.
+   */
+  override onDrop(client: MissionClient): void {
+    if (this.#activated) super.onDrop(client);
   }
 
   override onLeave(client: MissionClient): void {
@@ -146,14 +167,19 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
       this.#close(MISSION_CANCELLED_CLOSE_CODE);
     } catch (error) {
       console.error(`[mission] não foi possível ativar a expedição: ${errorName(error)}`);
+      // Everyone is aboard and no new join will try again: retry until the deadline.
+      this.clock.setTimeout(() => {
+        if (this.#seats.size === this.#roster.size) void this.#activate();
+      }, ACTIVATION_RETRY_MS);
     } finally {
       this.#activating = false;
     }
   }
 
   #close(code: number): void {
-    if (this.#ended) return;
     this.#ended = true;
+    if (!this.#ready || this.#closing) return;
+    this.#closing = true;
     void this.disconnect(code);
   }
 }

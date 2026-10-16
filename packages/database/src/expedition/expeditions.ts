@@ -483,16 +483,19 @@ export async function getExpeditionRoster(
 }
 
 /** Expeditions running now (recovery: after a restart none of them has a room). */
-export async function listRunningExpeditions(db: Database): Promise<string[]> {
-  const rows = await db
-    .select({ expeditionId: expeditions.id })
+export async function listRunningExpeditions(
+  db: Database,
+): Promise<{ readonly expeditionId: string; readonly startKey: string }[]> {
+  return db
+    .select({ expeditionId: expeditions.id, startKey: expeditions.startKey })
     .from(expeditions)
     .where(inArray(expeditions.state, ['ACTIVE', 'EXTRACTING']));
-  return rows.map((row) => row.expeditionId);
 }
 
 export interface PendingPreparation {
   readonly expeditionId: string;
+  /** Names the process that started it (its boot ID is the prefix). */
+  readonly startKey: string;
   /** Time left until the deadline by the database clock; 0 once it passed. */
   readonly remainingMs: number;
 }
@@ -500,7 +503,11 @@ export interface PendingPreparation {
 /** Expeditions still waiting to start, oldest deadline first (recovery after a restart). */
 export async function listPreparingExpeditions(db: Database): Promise<PendingPreparation[]> {
   return db
-    .select({ expeditionId: expeditions.id, remainingMs: remainingMs() })
+    .select({
+      expeditionId: expeditions.id,
+      startKey: expeditions.startKey,
+      remainingMs: remainingMs(),
+    })
     .from(expeditions)
     .where(eq(expeditions.state, 'PREPARING'))
     .orderBy(asc(expeditions.prepareDeadlineAt));
@@ -512,7 +519,11 @@ export async function findPreparationByStartKey(
   startKey: string,
 ): Promise<PendingPreparation | null> {
   const [row] = await db
-    .select({ expeditionId: expeditions.id, remainingMs: remainingMs() })
+    .select({
+      expeditionId: expeditions.id,
+      startKey: expeditions.startKey,
+      remainingMs: remainingMs(),
+    })
     .from(expeditions)
     .where(and(eq(expeditions.startKey, startKey), eq(expeditions.state, 'PREPARING')));
   return row ?? null;

@@ -457,7 +457,9 @@ describe('expedition start and reservations', () => {
     // A started match is no longer a preparation to cancel.
     expect(await cancelPreparation(t.db, started.expeditionId)).toBe('not_preparing');
     expect((await getActiveExpedition(t.db, alpha.accountId))?.state).toBe('ACTIVE');
-    expect(await listRunningExpeditions(t.db)).toContain(started.expeditionId);
+    expect((await listRunningExpeditions(t.db)).map((row) => row.expeditionId)).toContain(
+      started.expeditionId,
+    );
 
     expect(await abortExpedition(t.db, started.expeditionId)).toBe('aborted');
     expect(await abortExpedition(t.db, started.expeditionId)).toBe('not_running');

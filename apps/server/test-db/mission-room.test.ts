@@ -8,6 +8,8 @@ import {
   MISSION_ROOM_NAME,
   MissionRoute,
   type MissionTicketResponse,
+  PartyClientMessage,
+  type PartyRefusal,
   PartyServerMessage,
   RoomPhase,
   type SectorStateView,
@@ -165,6 +167,63 @@ describe('mission room', () => {
     await waitFor(() => leaderParty.state.expeditionId === '', 'party livre');
     await waitFor(() => leaderParty.state.revision > revision, 'revisão nova');
   });
+
+  it("keeps a running match out of the party's confirmations and changes", async () => {
+    const { leader, guest, party: leaderParty, guestRoom } = await party.readyPair();
+    const ended = party.messages<ExpeditionEndedNotice>(
+      guestRoom,
+      PartyServerMessage.ExpeditionEnded,
+    );
+    const refused = party.messages<PartyRefusal>(leaderParty, PartyServerMessage.Refused);
+    await party.confirm(leaderParty);
+    const expeditionId = leaderParty.state.expeditionId;
+    const room = await mission.enterMission(leader);
+    await mission.enterMission(guest);
+    await waitFor(() => leaderParty.state.expeditionState === 'ACTIVE', 'partida ativa');
+    // Party and mission room patch independently.
+    await waitFor(() => room.state.phase === RoomPhase.Active, 'sala ativa');
+
+    // Confirming again, even the old revision, does not take the match back.
+    leaderParty.send(PartyClientMessage.Confirm, { revision: leaderParty.state.revision });
+    await waitFor(() => refused.length === 1, 'recusa');
+    expect(refused[0]?.code).toBe('member_in_expedition');
+    // A party change during the match does not claim the items went back.
+    guestRoom.send(PartyClientMessage.SelectClass, { classId: 'class.medic' });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(ended).toHaveLength(0);
+    expect(leaderParty.state.expeditionId).toBe(expeditionId);
+    expect((await getActiveExpedition(api.db, guest.id))?.state).toBe('ACTIVE');
+    // Recovery of the same process leaves its own match alone.
+    expect((await api.expeditions.recover()).running).toBe(0);
+    expect((await getActiveExpedition(api.db, guest.id))?.state).toBe('ACTIVE');
+  });
+
+  it('lets a loader who dropped enter again at once, and counts only who is aboard', async () => {
+    const { leader, guest, party: leaderParty } = await party.readyPair();
+    await party.confirm(leaderParty);
+    const dropped = await mission.enterMission(leader);
+    await waitFor(() => mission.crewNames(dropped).length === 1, 'líder a bordo');
+    // The page dies without leaving (no consented leave).
+    await dropped.leave(false);
+
+    const room = await mission.enterMission(guest);
+    await waitFor(() => mission.crewNames(room).length === 1, 'só o convidado a bordo');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(room.state.phase).toBe(RoomPhase.Preparing);
+
+    // A new ticket gets the leader back right away.
+    await mission.enterMission(leader);
+    await waitFor(() => room.state.phase === RoomPhase.Active, 'partida ativa');
+  });
+
+  it('limits mission tickets per account', async () => {
+    const { leader, party: leaderParty } = await party.readyPair();
+    await party.confirm(leaderParty);
+    const statuses: number[] = [];
+    for (let i = 0; i < 31; i++) statuses.push((await mission.ticketFor(leader)).status);
+    expect(statuses.slice(0, 30).every((status) => status === 201)).toBe(true);
+    expect(statuses[30]).toBe(429);
+  });
 });
 
 describe('mission room deadline', () => {
@@ -249,5 +308,55 @@ describe('mission room deadline', () => {
     } finally {
       await restarted.close();
     }
+  });
+});
+
+describe('mission activation failure', () => {
+  let api: ApiServer;
+  const party = partyHelpers(() => api);
+  const mission = missionHelpers(() => api);
+  let failures = 0;
+
+  beforeAll(async () => {
+    api = await startApiServer(
+      POLICY,
+      {},
+      {
+        wrapExpeditions: (service) => ({
+          start: (request, watcher) => service.start(request, watcher),
+          cancel: (expeditionId, reason) => service.cancel(expeditionId, reason),
+          watch: (expeditionId, watcher) => service.watch(expeditionId, watcher),
+          roster: (expeditionId) => service.roster(expeditionId),
+          activate: async (expeditionId) => {
+            if (failures > 0) {
+              failures--;
+              throw new Error('banco indisponível');
+            }
+            return service.activate(expeditionId);
+          },
+          abort: (expeditionId) => service.abort(expeditionId),
+        }),
+      },
+    );
+  });
+
+  afterEach(async () => {
+    await mission.leaveAll();
+    await party.leaveAll();
+  });
+
+  afterAll(async () => {
+    await api?.close();
+  });
+
+  it('tries the activation again when the database fails', async () => {
+    const { leader, guest, party: leaderParty } = await party.readyPair();
+    await party.confirm(leaderParty);
+    failures = 2;
+    const room = await mission.enterMission(leader);
+    await mission.enterMission(guest);
+    await waitFor(() => room.state.phase === RoomPhase.Active, 'partida ativa', 8000);
+    expect(failures).toBe(0);
+    expect((await getActiveExpedition(api.db, leader.id))?.state).toBe('ACTIVE');
   });
 });

@@ -37,11 +37,20 @@ export type PartyExpeditionStart =
       readonly state: ExpeditionState;
       /** Deadline on this process's clock (`Date.now()` scale). */
       readonly prepareDeadline: number;
+      /** Stops delivering this expedition's events to the start's watcher. */
+      readonly unwatch: () => void;
     }
   | { readonly ok: false; readonly code: PartyErrorCode };
 
 /** Why a preparation ended without a match. */
 export type CancelReason = 'expired' | 'party_changed' | 'room_closed';
+
+/**
+ * `cancelled`: committed, the items are back; `not_preparing`: nothing to cancel (it
+ * already ended, or became active first); `retrying`: the database failed and the
+ * cancellation will be tried again.
+ */
+export type CancelOutcome = 'cancelled' | 'not_preparing' | 'retrying';
 
 /** Lifecycle events of one expedition, delivered after the database committed them. */
 export interface ExpeditionWatcher {
@@ -58,10 +67,10 @@ export interface ExpeditionStarter {
   /** Reserves the confirmed loadouts in a PREPARING expedition and watches it. */
   start(request: PartyExpeditionRequest, watcher: ExpeditionWatcher): Promise<PartyExpeditionStart>;
   /**
-   * Cancels a preparation and returns its items. Resolves true once that is committed
-   * (or nothing was left to cancel); false when the database failed and it is retried.
+   * Cancels a preparation and returns its items. Once asked, the expedition can no
+   * longer be activated by this process, even while the cancellation is retried.
    */
-  cancel(expeditionId: string, reason: CancelReason): Promise<boolean>;
+  cancel(expeditionId: string, reason: CancelReason): Promise<CancelOutcome>;
   /** Follows an expedition's events; returns the function that stops following. */
   watch(expeditionId: string, watcher: ExpeditionWatcher): () => void;
 }
@@ -110,6 +119,8 @@ export class ExpeditionService implements MissionLifecycle {
   readonly #bootId = randomUUID();
   readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #watchers = new Map<string, Set<ExpeditionWatcher>>();
+  /** Preparations someone asked to cancel; they are never activated. */
+  readonly #cancelling = new Set<string>();
   /** Database work running now; shutdown waits for it before closing the pool. */
   readonly #running = new Set<Promise<unknown>>();
   #closed = false;
@@ -145,7 +156,7 @@ export class ExpeditionService implements MissionLifecycle {
       }
       return { ok: false, code: REFUSAL[result.reason] };
     }
-    this.watch(result.expeditionId, watcher);
+    const unwatch = this.watch(result.expeditionId, watcher);
     if (result.state === 'PREPARING') {
       this.#scheduleExpiry(result.expeditionId, result.prepareRemainingMs);
     }
@@ -154,6 +165,7 @@ export class ExpeditionService implements MissionLifecycle {
       expeditionId: result.expeditionId,
       state: result.state,
       prepareDeadline: Date.now() + result.prepareRemainingMs,
+      unwatch,
     };
   }
 
@@ -175,7 +187,8 @@ export class ExpeditionService implements MissionLifecycle {
     return getExpeditionRoster(this.#db, expeditionId);
   }
 
-  cancel(expeditionId: string, reason: CancelReason): Promise<boolean> {
+  cancel(expeditionId: string, reason: CancelReason): Promise<CancelOutcome> {
+    this.#cancelling.add(expeditionId);
     this.#clearTimer(expeditionId);
     // On failure the cancellation is retried by the same path as an expired deadline,
     // so the items never stay reserved for a preparation nobody is waiting for.
@@ -183,6 +196,8 @@ export class ExpeditionService implements MissionLifecycle {
   }
 
   async activate(expeditionId: string): Promise<ActivateExpeditionResult> {
+    // A cancellation was asked for (it may still be retrying): the match must not start.
+    if (this.#cancelling.has(expeditionId)) return 'not_preparing';
     const result = await this.#track(activateExpedition(this.#db, expeditionId));
     if (result === 'activated') {
       this.#clearTimer(expeditionId);
@@ -201,13 +216,20 @@ export class ExpeditionService implements MissionLifecycle {
    * reserved items (docs/12). Returns how many were found.
    */
   async recover(): Promise<{ readonly preparing: number; readonly running: number }> {
-    const preparing = await listPreparingExpeditions(this.#db);
-    for (const { expeditionId, remainingMs } of preparing) {
+    const [preparing, running] = await Promise.all([
+      listPreparingExpeditions(this.#db),
+      listRunningExpeditions(this.#db),
+    ]);
+    // Expeditions this process started have rooms and timers: a late retry of the
+    // recovery must not touch them.
+    const own = `${this.#bootId}:`;
+    const orphanPreparing = preparing.filter((row) => !row.startKey.startsWith(own));
+    const orphanRunning = running.filter((row) => !row.startKey.startsWith(own));
+    for (const { expeditionId, remainingMs } of orphanPreparing) {
       this.#scheduleExpiry(expeditionId, remainingMs);
     }
-    const running = await listRunningExpeditions(this.#db);
-    for (const expeditionId of running) void this.abort(expeditionId);
-    return { preparing: preparing.length, running: running.length };
+    for (const { expeditionId } of orphanRunning) void this.abort(expeditionId);
+    return { preparing: orphanPreparing.length, running: orphanRunning.length };
   }
 
   /**
@@ -233,7 +255,10 @@ export class ExpeditionService implements MissionLifecycle {
   }
 
   #scheduleExpiry(expeditionId: string, delayMs: number): void {
-    this.#later(expeditionId, delayMs, () => this.#cancel(expeditionId, 'expired'));
+    this.#later(expeditionId, delayMs, () => {
+      this.#cancelling.add(expeditionId);
+      return this.#cancel(expeditionId, 'expired');
+    });
   }
 
   #later(expeditionId: string, delayMs: number, work: () => Promise<unknown>): void {
@@ -262,18 +287,21 @@ export class ExpeditionService implements MissionLifecycle {
     return work;
   }
 
-  async #cancel(expeditionId: string, reason: CancelReason): Promise<boolean> {
+  async #cancel(expeditionId: string, reason: CancelReason): Promise<CancelOutcome> {
     try {
       const result = await cancelPreparation(this.#db, expeditionId);
+      this.#cancelling.delete(expeditionId);
       if (result === 'cancelled') {
         this.#emit(expeditionId, (watcher) => watcher.onCancelled?.(reason));
         this.#watchers.delete(expeditionId);
+        return 'cancelled';
       }
-      return true;
+      return 'not_preparing';
     } catch (error) {
       console.error(`[expedition] não foi possível cancelar a preparação: ${errorName(error)}`);
+      this.#cancelling.add(expeditionId);
       this.#later(expeditionId, RETRY_MS, () => this.#cancel(expeditionId, reason));
-      return false;
+      return 'retrying';
     }
   }
 
