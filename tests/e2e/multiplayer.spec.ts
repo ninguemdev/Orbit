@@ -26,6 +26,7 @@ declare global {
       status: string;
       latest(): WorldView | null;
       shipHistory(): unknown;
+      layout(): unknown;
     };
   }
 }

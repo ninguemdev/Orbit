@@ -123,7 +123,7 @@ Para preparar a missão:
 - **Nave:** a party pode usar qualquer nave liberada por um dos membros, e o painel mostra quem libera cada uma. O líder escolhe.
 - **Prontidão:** cada membro clica em **Estou pronto**, e o líder clica em **Confirmar preparação** quando todos estiverem prontos. Qualquer mudança na party, na classe, na nave ou no loadout desfaz a prontidão de todos.
 - **Reserva:** a confirmação cria a expedição no servidor e reserva os itens de todos os loadouts, marcados como **(reservado)** no stash. Enquanto a preparação vale, ninguém troca o loadout. Qualquer mudança na party (alguém sair, ficar "não pronto", trocar classe, nave ou líder) cancela a preparação e devolve os itens.
-- **Missão:** depois da confirmação, cada membro entra sozinho na sala da missão da party, só com os membros dela. A partida começa quando todos entraram; se alguém não entrar em 30 s, a preparação é cancelada e os itens voltam. Se a entrada falhar, o botão **Entrar na missão** tenta de novo. Por enquanto a missão usa o setor de testes (andar e pilotar) e termina quando todos saem com **Sair da missão**, devolvendo os itens reservados; o setor, o loot e a extração chegam nas próximas tarefas da 0.3.
+- **Missão:** depois da confirmação, cada membro entra sozinho na sala da missão da party, só com os membros dela. A partida começa quando todos entraram; se alguém não entrar em 30 s, a preparação é cancelada e os itens voltam. Se a entrada falhar, o botão **Entrar na missão** tenta de novo. A missão acontece num setor aberto de 12.000 × 12.000 gerado para ela, com a nave escolhida pelo líder: asteroides, três contêineres e a zona de **Extração**. O minimapa no canto inferior esquerdo mostra o setor inteiro e a posição da nave. Por enquanto os contêineres ainda não abrem e a zona não extrai: a partida termina quando todos saem com **Sair da missão**, devolvendo os itens reservados. Loot e extração chegam nas próximas tarefas da 0.3.
 
 ### API de conta
 
@@ -153,7 +153,7 @@ Escritas exigem `Content-Type: application/json` e uma origem de `ALLOWED_ORIGIN
 - Até 4 tripulantes por sala; uma quinta pessoa cria outra sala.
 - Sem previsão local: o próprio personagem aparece com cerca de 100 ms mais a latência. Os outros jogadores e a nave são interpolados; previsão e reconciliação do jogador local ficam para depois de estabilizar o fluxo.
 - Uma queda reserva o assento por 60 s. O tripulante aparece como "reconectando", e fechar a aba deixa o personagem na sala até esse prazo. A detecção depende do heartbeat do servidor e pode levar alguns segundos.
-- Um único setor fixo, um casco de nave e colisão por círculos contra asteroides. Não há dano, boost, consoles extras, EVA nem combate.
+- A sala de testes usa um setor fixo e a Batedora; a missão gera um setor por partida. Colisão por círculos contra asteroides e contêineres. Não há dano, boost, consoles extras, EVA nem combate.
 - A sala de testes ("Entrar na sala") continua sem validar a sessão: o nick da conta é só um rótulo. A sala da missão exige ticket da conta.
 - Parties ficam na memória do processo de jogo: reiniciar o servidor desfaz as parties e a prontidão (conta, classe, inventário, licenças e loadout permanecem).
 - A missão ainda não tem extração nem liquidação: ela termina quando todos saem e os itens reservados voltam, como aborto técnico (a perda normal por abandono chega com a extração). Ao reiniciar, o servidor cancela as preparações e aborta as partidas que o processo anterior deixou.

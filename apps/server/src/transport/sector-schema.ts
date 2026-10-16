@@ -30,6 +30,42 @@ export const ShipState = schema(
 );
 export type ShipState = SchemaType<typeof ShipState>;
 
+export const AsteroidState = schema(
+  {
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    radius: t.float32().default(0),
+  },
+  'Asteroid',
+);
+export type AsteroidState = SchemaType<typeof AsteroidState>;
+
+export const SectorFeatureState = schema(
+  {
+    id: t.string().default(''),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    radius: t.float32().default(0),
+  },
+  'SectorFeature',
+);
+export type SectorFeatureState = SchemaType<typeof SectorFeatureState>;
+
+/** Static geometry of the sector: filled once when the room starts, never patched again. */
+export const SectorLayoutState = schema(
+  {
+    minX: t.float32().default(0),
+    minY: t.float32().default(0),
+    maxX: t.float32().default(0),
+    maxY: t.float32().default(0),
+    asteroids: t.array(AsteroidState),
+    containers: t.array(SectorFeatureState),
+    extractionZones: t.array(SectorFeatureState),
+  },
+  'SectorLayout',
+);
+export type SectorLayoutState = SchemaType<typeof SectorLayoutState>;
+
 export const SectorState = schema(
   {
     protocolVersion: t.uint8().default(0),
@@ -37,6 +73,7 @@ export const SectorState = schema(
     sectorId: t.string().default(''),
     phase: t.string().default(''),
     tick: t.uint32().default(0),
+    layout: SectorLayoutState,
     ship: ShipState,
     crew: t.map(CrewMemberState),
   },

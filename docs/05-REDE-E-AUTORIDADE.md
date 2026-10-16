@@ -123,6 +123,8 @@ Geometria simples: círculos no exterior e tiles/retângulos nos interiores. Nã
 - Tripulação recebe sensores compartilhados, dados da própria nave e objetos relevantes ao seu espaço.
 - Baús não abertos, seed privada, scripts de AI e inventários alheios não entram no estado público.
 - Mapas estáticos visíveis são enviados na entrada/descoberta, sem reenviar tiles em cada patch.
+  - Na sala da missão, o estado tem um `layout` com bordas, asteroides, contêineres (posição e tamanho) e zonas de extração. É preenchido uma vez quando a sala abre e nunca muda, então só segue no estado completo da entrada ou reconexão.
+  - A seed fica no processo. Ela gera fluxos aleatórios separados por SHA-256 (um para o layout, outros para o conteúdo oculto), então reconstruir o layout visível não revela o que os contêineres guardam.
 - NPCs distantes avaliam decisões a 2 a 5 Hz; entidades em combate usam resolução compatível com o tick.
 - Projetéis, loot físico e pontos de interesse têm limites explícitos por sala. Reciclar objetos visuais e descartar efeitos antigos.
 - Eventos cosméticos podem ser agregados; eventos econômicos não podem ser descartados.

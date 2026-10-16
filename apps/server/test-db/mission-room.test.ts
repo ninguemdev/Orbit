@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
-import { ShipHullId } from '@orbit/catalog';
+import { SectorId, ShipHullId } from '@orbit/catalog';
 import {
   type ExpeditionEndedNotice,
   MISSION_CANCELLED_CLOSE_CODE,
@@ -21,6 +21,7 @@ import {
   updateProfileClass,
 } from '@orbit/database';
 import { ExpeditionService } from '../src/modules/expedition/expedition-service';
+import { generateOpenSector, newSectorSeed } from '../src/simulation/sector-generator';
 import { ALLOWED_ORIGIN, type ApiServer, call, startApiServer } from './api-harness';
 import { POLICY, type Player, eventually, partyHelpers, waitFor } from './party-helpers';
 
@@ -74,9 +75,17 @@ describe('mission room', () => {
   let api: ApiServer;
   const party = partyHelpers(() => api);
   const mission = missionHelpers(() => api);
+  /** Seeds handed to mission rooms, in order: only the test knows them. */
+  const seeds: string[] = [];
 
   beforeAll(async () => {
-    api = await startApiServer(POLICY);
+    api = await startApiServer(POLICY, {
+      sectorSeed: () => {
+        const seed = newSectorSeed();
+        seeds.push(seed);
+        return seed;
+      },
+    });
   });
 
   afterEach(async () => {
@@ -104,6 +113,42 @@ describe('mission room', () => {
     expect((await getActiveExpedition(api.db, guest.id))?.state).toBe('ACTIVE');
     await waitFor(() => guestRoom.state.expeditionState === 'ACTIVE', 'party vê a partida');
     expect(leaderParty.state.prepareSecondsLeft).toBe(0);
+  });
+
+  it('builds the sector from a private seed and brings the ship the leader chose', async () => {
+    const pair = await party.readyPair({ guestShips: [ShipHullId.Hauler] });
+    // Only the guest is licensed for the hauler; the union lets the leader pick it.
+    pair.party.send(PartyClientMessage.SelectShip, { shipId: ShipHullId.Hauler });
+    await waitFor(() => pair.guestRoom.state.selectedShipId === ShipHullId.Hauler, 'nave');
+    await party.readyAll(pair.party, pair.guestRoom);
+    await party.confirm(pair.party);
+
+    const room = await mission.enterMission(pair.leader);
+    await waitFor(() => (room.state.layout?.containers?.length ?? 0) > 0, 'setor recebido');
+    const seed = seeds.at(-1) ?? '';
+    const sector = generateOpenSector(seed);
+    expect(room.state.sectorId).toBe(SectorId.Open);
+    expect(room.state.ship.hullId).toBe(ShipHullId.Hauler);
+    expect(room.state.ship.x).toBeCloseTo(sector.shipSpawn.position.x, 1);
+    expect(room.state.ship.y).toBeCloseTo(sector.shipSpawn.position.y, 1);
+
+    // The client gets the geometry the seed produced, and nothing else.
+    const { layout } = room.state;
+    expect(layout.maxX - layout.minX).toBe(12_000);
+    expect(layout.asteroids.length).toBe(sector.obstacles.length);
+    const containers: { id: string; x: number; y: number }[] = [];
+    layout.containers.forEach(({ id, x, y }) => containers.push({ id, x, y }));
+    expect(containers).toEqual(
+      sector.containers.map(({ id, x, y }) => ({
+        id,
+        x: Math.fround(x),
+        y: Math.fround(y),
+      })),
+    );
+    expect(layout.extractionZones.length).toBe(1);
+    const visible = JSON.stringify((room.state as unknown as { toJSON(): unknown }).toJSON());
+    expect(visible).not.toContain(seed);
+    expect(visible).not.toMatch(/seed/i);
   });
 
   it('keeps outsiders, replays, duplicates and client-made rooms out', async () => {

@@ -14,7 +14,12 @@ import {
   type ShipInput,
 } from '@orbit/contracts';
 import { SnapshotBuffer } from './snapshot-buffer';
-import { type WorldSnapshot, snapshotFromState } from './world-snapshot';
+import {
+  type SectorLayout,
+  type WorldSnapshot,
+  layoutFromState,
+  snapshotFromState,
+} from './world-snapshot';
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected';
 
@@ -43,6 +48,8 @@ export interface SectorBridge {
   /** Interpolated state to render at local time `nowMs`. */
   sample(nowMs: number): WorldSnapshot | null;
   latest(): WorldSnapshot | null;
+  /** Static sector geometry; null until the first state arrives. */
+  layout(): SectorLayout | null;
   /** Continuous movement intent; sent at the input rate, never as a position. */
   setMoveIntent(intent: MoveIntent): void;
   /** Continuous helm intent; only used while this player is the operator. */
@@ -75,6 +82,7 @@ export class SectorConnection implements SectorBridge {
   #seq = 0;
   #helmSeq = 0;
   #lastNotice: Notice | null = null;
+  #layout: SectorLayout | null = null;
   #closeCode: number | null = null;
   readonly #timers: ReturnType<typeof setInterval>[];
   readonly #statusListeners = new Set<(status: ConnectionStatus) => void>();
@@ -151,6 +159,10 @@ export class SectorConnection implements SectorBridge {
 
   latest(): WorldSnapshot | null {
     return this.#snapshots.latest();
+  }
+
+  layout(): SectorLayout | null {
+    return this.#layout;
   }
 
   /** Recently received snapshots (about the last 1.5 s), for diagnostics. */
@@ -234,6 +246,8 @@ export class SectorConnection implements SectorBridge {
   #record(state: SectorStateView): void {
     const wasOperator = this.isOperator;
     if (!state.ship || !state.crew) return;
+    // The geometry never changes during a match: copied once.
+    this.#layout ??= layoutFromState(state);
     this.#snapshots.push(snapshotFromState(state, performance.now()));
     // The server numbers each operator's helm inputs from scratch.
     if (!wasOperator && this.isOperator) {

@@ -18,6 +18,7 @@ import {
   ContinuousInputGate,
   type CrewMovementParams,
   type InputOfferResult,
+  type SectorGeometry,
   type ShipKinematics,
   type Vec2,
   distance,
@@ -92,9 +93,18 @@ export class SectorSimulation {
   readonly crew = new Map<string, CrewRuntime>();
   tick = 0;
   readonly #crewMovement: CrewMovementParams;
+  /** What the ship collides with: asteroids and containers. */
+  readonly #geometry: SectorGeometry;
 
-  constructor(sectorId: SectorId = SectorId.Dev, hullId: ShipHullId = ShipHullId.Scout) {
-    this.sector = SECTORS[sectorId];
+  constructor(
+    sector: SectorDefinition = SECTORS[SectorId.Dev],
+    hullId: ShipHullId = ShipHullId.Scout,
+  ) {
+    this.sector = sector;
+    this.#geometry = {
+      bounds: sector.bounds,
+      obstacles: [...sector.obstacles, ...sector.containers],
+    };
     const hull = SHIP_HULLS[hullId];
     this.ship = {
       hull,
@@ -200,7 +210,7 @@ export class SectorSimulation {
       control,
       dtSeconds,
       this.ship.hull.handling,
-      this.sector,
+      this.#geometry,
     );
     for (const member of this.crew.values()) {
       if (member.atHelm) continue; // Seated operators steer the ship instead of walking.
