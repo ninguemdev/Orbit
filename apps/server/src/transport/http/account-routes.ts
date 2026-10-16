@@ -62,6 +62,7 @@ const STATUS: Record<string, number> = {
   [AccountErrorCode.EmptySlot]: 409,
   [AccountErrorCode.InvalidSlot]: 400,
   [AccountErrorCode.InvalidLoadout]: 422,
+  [AccountErrorCode.InExpedition]: 409,
   [AccountErrorCode.UnsupportedMediaType]: 415,
   [AccountErrorCode.RateLimited]: 429,
   [AccountErrorCode.Overloaded]: 503,
@@ -256,7 +257,14 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
         // Saving through the service also drops the readiness of the player's party.
         const result = await loadouts.save(session.accountId, parsed.data.picks);
         if (!result.ok) {
-          if (result.issues === null) return fail(response, AccountErrorCode.Unauthenticated);
+          if (result.issues === null) {
+            return fail(
+              response,
+              result.reason === 'in_expedition'
+                ? AccountErrorCode.InExpedition
+                : AccountErrorCode.Unauthenticated,
+            );
+          }
           const body: LoadoutRefusalBody = {
             error: AccountErrorCode.InvalidLoadout,
             issues: result.issues,

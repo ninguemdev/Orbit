@@ -39,6 +39,8 @@ export const AccountErrorCode = {
   EmptySlot: 'empty_slot',
   InvalidSlot: 'invalid_slot',
   InvalidLoadout: 'invalid_loadout',
+  /** The account is in an expedition: its reserved equipment cannot change. */
+  InExpedition: 'in_expedition',
 } as const;
 export type AccountErrorCode = (typeof AccountErrorCode)[keyof typeof AccountErrorCode];
 

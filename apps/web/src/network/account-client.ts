@@ -108,6 +108,8 @@ export function describeAccountError(code: ClientErrorCode): string {
       return 'Espaço do stash inválido.';
     case 'invalid_loadout':
       return 'O loadout tem itens que não podem ir nesses espaços.';
+    case 'in_expedition':
+      return 'Você está numa expedição: o equipamento reservado não muda até ela terminar.';
     case 'removed_from_party':
       return 'O líder removeu você desta party. Para voltar, peça um novo convite.';
   }

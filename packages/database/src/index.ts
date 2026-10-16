@@ -8,3 +8,4 @@ export { createThrowawayDatabase, type ThrowawayDatabase } from './throwaway-dat
 export * from './identity/recovery';
 export * from './inventory/inventory';
 export * from './inventory/loadout';
+export * from './expedition/expeditions';
