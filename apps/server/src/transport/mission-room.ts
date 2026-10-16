@@ -91,14 +91,15 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
       this.#unwatch();
       throw new Error('Expedição sem preparação para abrir a sala');
     }
+    // Known before anything below can fail: a room that fails to open still cancels
+    // the preparation on dispose, returning the items at once.
+    this.#expeditionId = roster.expeditionId;
     if (!isShipHullId(roster.shipId)) {
-      this.#unwatch();
       throw new Error(`Nave desconhecida na expedição: ${roster.shipId}`);
     }
     // The seed stays in this process: clients receive only the resulting geometry.
     const seed = (this.#deps.sectorSeed ?? newSectorSeed)();
     this.startSector(new SectorSimulation(generateOpenSector(seed), roster.shipId));
-    this.#expeditionId = roster.expeditionId;
     for (const member of roster.members) this.#roster.set(member.accountId, member.nick);
     this.maxClients = roster.members.length;
     // Not listed for matchmaking; joining needs this room's ID and a ticket for it.

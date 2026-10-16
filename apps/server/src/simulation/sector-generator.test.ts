@@ -1,17 +1,21 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { LARGEST_SHIP_RADIUS, OPEN_SECTOR, type SectorDefinition, SectorId } from '@orbit/catalog';
+import {
+  LARGEST_SHIP_RADIUS,
+  OPEN_SECTOR,
+  type SectorDefinition,
+  SectorId,
+  sectorSolids,
+} from '@orbit/catalog';
 import { type Circle, type Vec2, distance, sub, sweepCircle } from '@orbit/simulation';
 import { findRoutes, generateOpenSector, newSectorSeed, seededRandom } from './sector-generator';
+
+const APPROACH = OPEN_SECTOR.containers.approachDistance;
 
 /** Reproducible seeds: the same list on every run. */
 const SEEDS = Array.from({ length: 150 }, (_, index) =>
   createHash('sha256').update(`teste-setor-${index}`).digest('hex'),
 );
-
-function solidsOf(sector: SectorDefinition): Circle[] {
-  return [...sector.obstacles, ...sector.containers];
-}
 
 /** Flies the route with the ship's own collision: no segment may touch anything. */
 function expectFlyable(route: readonly Vec2[], sector: SectorDefinition) {
@@ -20,7 +24,7 @@ function expectFlyable(route: readonly Vec2[], sector: SectorDefinition) {
   for (let index = 1; index < route.length; index++) {
     const from = route[index - 1] as Vec2;
     const to = route[index] as Vec2;
-    expect(sweepCircle(from, sub(to, from), radius, solidsOf(sector))).toBeNull();
+    expect(sweepCircle(from, sub(to, from), radius, sectorSolids(sector))).toBeNull();
     expect(to.x - radius).toBeGreaterThanOrEqual(bounds.minX);
     expect(to.x + radius).toBeLessThanOrEqual(bounds.maxX);
     expect(to.y - radius).toBeGreaterThanOrEqual(bounds.minY);
@@ -71,10 +75,10 @@ describe('open sector generation', () => {
       expect(sector.extractionZones).toHaveLength(1);
 
       const spawn = sector.shipSpawn.position;
-      for (const solid of solidsOf(sector)) {
+      for (const solid of sectorSolids(sector)) {
         expect(distance(spawn, solid) - solid.radius).toBeGreaterThanOrEqual(safeRadius - 1e-6);
       }
-      for (const solid of solidsOf(sector)) {
+      for (const solid of sectorSolids(sector)) {
         expect(solid.x - solid.radius).toBeGreaterThanOrEqual(-halfSize);
         expect(solid.x + solid.radius).toBeLessThanOrEqual(halfSize);
         expect(solid.y - solid.radius).toBeGreaterThanOrEqual(-halfSize);
@@ -88,10 +92,11 @@ describe('open sector generation', () => {
         expect(distance(asteroid, zone)).toBeGreaterThan(asteroid.radius + zone.radius);
       }
 
-      const routes = findRoutes(sector, LARGEST_SHIP_RADIUS);
-      expect(routes.extraction).not.toBeNull();
-      expectFlyable(routes.extraction ?? [], sector);
-      expect(distance(routes.extraction?.at(-1) ?? spawn, zone)).toBeLessThanOrEqual(zone.radius);
+      const routes = findRoutes(sector, LARGEST_SHIP_RADIUS, APPROACH);
+      const [exit] = routes.extractionZones;
+      if (!exit) throw new Error('sem rota para a extração');
+      expectFlyable(exit, sector);
+      expect(distance(exit.at(-1) as Vec2, zone)).toBeLessThanOrEqual(zone.radius);
       routes.containers.forEach((route, index) => {
         const container = sector.containers[index];
         if (!route || !container) throw new Error(`sem rota para o contêiner ${index + 1}`);
@@ -99,7 +104,7 @@ describe('open sector generation', () => {
         const end = route.at(-1) as Vec2;
         expect(
           distance(end, container) - container.radius - LARGEST_SHIP_RADIUS,
-        ).toBeLessThanOrEqual(OPEN_SECTOR.containers.approachDistance);
+        ).toBeLessThanOrEqual(APPROACH);
       });
     },
   );
@@ -115,17 +120,22 @@ describe('open sector generation', () => {
       bounds: { minX: -6000, minY: -6000, maxX: 6000, maxY: 6000 },
       obstacles: ring,
       containers: [{ id: 'container.1', x: 4000, y: 0, radius: 36 }],
-      extractionZones: [{ id: 'extraction.1', x: -4000, y: 0, radius: 600 }],
+      extractionZones: [
+        { id: 'extraction.1', x: -4000, y: 0, radius: 600 },
+        // Inside the ring: reachable even while the other exit is not.
+        { id: 'extraction.2', x: 600, y: 0, radius: 200 },
+      ],
       shipSpawn: { position: { x: 0, y: 0 }, angle: 0 },
     };
-    const routes = findRoutes(sector, LARGEST_SHIP_RADIUS);
-    expect(routes.extraction).toBeNull();
+    const routes = findRoutes(sector, LARGEST_SHIP_RADIUS, APPROACH);
+    expect(routes.extractionZones[0]).toBeNull();
+    expect(routes.extractionZones[1]).not.toBeNull();
     expect(routes.containers).toEqual([null]);
 
     // One gap wide enough for the ship opens both routes.
     const opened = { ...sector, obstacles: ring.filter((_, index) => index !== 0 && index !== 1) };
-    const openRoutes = findRoutes(opened, LARGEST_SHIP_RADIUS);
-    expect(openRoutes.extraction).not.toBeNull();
+    const openRoutes = findRoutes(opened, LARGEST_SHIP_RADIUS, APPROACH);
+    expect(openRoutes.extractionZones[0]).not.toBeNull();
     expect(openRoutes.containers[0]).not.toBeNull();
   });
 });

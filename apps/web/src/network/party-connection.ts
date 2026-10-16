@@ -4,7 +4,6 @@ import {
   PARTY_ROOM_NAME,
   PartyClientMessage,
   type PartyInviteNotice,
-  type PartyMemberView,
   type PartyRefusal,
   PartyRoute,
   PartyServerMessage,
@@ -13,6 +12,7 @@ import {
   type PartyTicketResponse,
 } from '@orbit/contracts';
 import { type ClientErrorCode, requestJson } from './account-client';
+import { copyList } from './list-view';
 import { defaultServerEndpoint } from './sector-connection';
 
 export interface PartyMember {
@@ -146,13 +146,6 @@ export class PartyConnection {
   }
 }
 
-/** Copies a synchronized list of strings (ships, expedition members). */
-function stringsOf(list: PartyMemberView['ships'] | undefined): string[] {
-  const values: string[] = [];
-  list?.forEach((value) => values.push(value));
-  return values;
-}
-
 function toView(state: PartyStateView): PartyView {
   const members: { member: PartyMember; joinedAt: number }[] = [];
   state.members?.forEach((member, accountId) => {
@@ -162,7 +155,7 @@ function toView(state: PartyStateView): PartyView {
         nick: member.nick,
         connected: member.connected,
         classId: member.classId,
-        ships: stringsOf(member.ships),
+        ships: copyList(member.ships),
         ready: member.ready,
       },
       joinedAt: member.joinedAt,
@@ -182,7 +175,7 @@ function toView(state: PartyStateView): PartyView {
             id: state.expeditionId,
             state: state.expeditionState,
             secondsLeft: state.prepareSecondsLeft ?? 0,
-            memberIds: stringsOf(state.expeditionMemberIds),
+            memberIds: copyList(state.expeditionMemberIds),
           }
         : null,
     members: members.map((entry) => entry.member),

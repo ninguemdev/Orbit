@@ -25,9 +25,8 @@ const LABEL_STYLE = { fontFamily: 'system-ui, sans-serif', fontSize: '14px' } as
 interface Minimap {
   readonly map: Phaser.GameObjects.Graphics;
   readonly ship: Phaser.GameObjects.Triangle;
-  /** Screen pixels per world unit. */
-  readonly scale: number;
-  readonly layout: SectorLayout;
+  /** World position to a point inside the minimap, in its own pixels. */
+  readonly at: (x: number, y: number) => [number, number];
 }
 
 /**
@@ -163,10 +162,12 @@ export class SectorScene extends Phaser.Scene {
       world.strokeCircle(asteroid.x, asteroid.y, asteroid.radius);
     }
     for (const container of layout.containers) {
+      // The outline is the solid circle the ship collides with; the square marks a crate.
       const side = container.radius * Math.SQRT2;
       world.fillStyle(PALETTE.container, 1);
-      world.fillRect(container.x - side / 2, container.y - side / 2, side, side);
+      world.fillCircle(container.x, container.y, container.radius);
       world.lineStyle(3, PALETTE.containerEdge, 1);
+      world.strokeCircle(container.x, container.y, container.radius);
       world.strokeRect(container.x - side / 2, container.y - side / 2, side, side);
       this.#worldLabel(container.x, container.y - container.radius - 8, 'Contêiner', '#ffd08a');
     }
@@ -211,7 +212,7 @@ export class SectorScene extends Phaser.Scene {
       .triangle(0, 0, 10, 4, 0, 0, 0, 8, PALETTE.self)
       .setScrollFactor(0)
       .setDepth(11);
-    this.#minimap = { map, ship, scale, layout };
+    this.#minimap = { map, ship, at };
     this.#placeMinimap(this.scale.height);
   }
 
@@ -222,11 +223,8 @@ export class SectorScene extends Phaser.Scene {
   #toMinimap(x: number, y: number): [number, number] {
     const minimap = this.#minimap;
     if (!minimap) return [0, 0];
-    const { bounds } = minimap.layout;
-    return [
-      minimap.map.x + (x - bounds.minX) * minimap.scale,
-      minimap.map.y + (y - bounds.minY) * minimap.scale,
-    ];
+    const [mapX, mapY] = minimap.at(x, y);
+    return [minimap.map.x + mapX, minimap.map.y + mapY];
   }
 
   #createShip(hullId: ShipHullId): Phaser.GameObjects.Container {

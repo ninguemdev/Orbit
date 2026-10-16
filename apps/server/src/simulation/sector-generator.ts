@@ -5,6 +5,7 @@ import {
   type SectorDefinition,
   type SectorFeature,
   SectorId,
+  sectorSolids,
 } from '@orbit/catalog';
 import { type Circle, type Vec2, distance, fromAngle, wrapAngle } from '@orbit/simulation';
 
@@ -65,8 +66,9 @@ export function generateOpenSector(seed: SectorSeed): SectorDefinition {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const sector = layOut(seededRandom(seed, `layout.${attempt}`));
     if (!sector) continue;
-    const routes = findRoutes(sector, LARGEST_SHIP_RADIUS);
-    if (routes.extraction && routes.containers.every((route) => route !== null)) return sector;
+    const routes = findRoutes(sector, LARGEST_SHIP_RADIUS, OPEN_SECTOR.containers.approachDistance);
+    const all = [...routes.extractionZones, ...routes.containers];
+    if (all.every((route) => route !== null)) return sector;
   }
   throw new Error('Não foi possível gerar um setor com rota');
 }
@@ -144,8 +146,8 @@ function layOut(random: () => number): SectorDefinition | null {
 }
 
 export interface SectorRoutes {
-  /** Waypoints from the spawn into the extraction zone, or null without a route. */
-  readonly extraction: readonly Vec2[] | null;
+  /** Per extraction zone, waypoints from the spawn into it, or null without a route. */
+  readonly extractionZones: readonly (readonly Vec2[] | null)[];
   /** Per container, waypoints from the spawn to alongside it, or null. */
   readonly containers: readonly (readonly Vec2[] | null)[];
 }
@@ -154,21 +156,41 @@ export interface SectorRoutes {
  * Searches routes for a ship of `shipRadius` on a grid. A cell counts as free only
  * when its center keeps the ship half a cell diagonal away from every solid and inside
  * the bounds, so the straight segment between two neighbouring free cells is free too:
- * a route found here can be flown without touching anything.
+ * a route found here can be flown without touching anything. A container is reached
+ * when the hull gets within `approachDistance` of it.
  */
-export function findRoutes(sector: SectorDefinition, shipRadius: number): SectorRoutes {
+export function findRoutes(
+  sector: SectorDefinition,
+  shipRadius: number,
+  approachDistance: number,
+): SectorRoutes {
   const { bounds } = sector;
-  const solids: readonly Circle[] = [...sector.obstacles, ...sector.containers];
   const margin = (ROUTE_CELL * Math.SQRT2) / 2;
   const columns = Math.floor((bounds.maxX - bounds.minX) / ROUTE_CELL);
   const rows = Math.floor((bounds.maxY - bounds.minY) / ROUTE_CELL);
+  const toColumn = (x: number) =>
+    Math.min(columns - 1, Math.max(0, Math.floor((x - bounds.minX) / ROUTE_CELL)));
+  const toRow = (y: number) =>
+    Math.min(rows - 1, Math.max(0, Math.floor((y - bounds.minY) / ROUTE_CELL)));
   const center = (cell: number): Vec2 => ({
     x: bounds.minX + ((cell % columns) + 0.5) * ROUTE_CELL,
     y: bounds.minY + (Math.floor(cell / columns) + 0.5) * ROUTE_CELL,
   });
-  const cellAt = (point: Vec2): number =>
-    Math.min(rows - 1, Math.max(0, Math.floor((point.y - bounds.minY) / ROUTE_CELL))) * columns +
-    Math.min(columns - 1, Math.max(0, Math.floor((point.x - bounds.minX) / ROUTE_CELL)));
+  /** Cells whose center is within `radius` of `point`; only its bounding box is scanned. */
+  const cellsWithin = (point: Vec2, radius: number): number[] => {
+    const cells: number[] = [];
+    for (let row = toRow(point.y - radius); row <= toRow(point.y + radius); row++) {
+      for (
+        let column = toColumn(point.x - radius);
+        column <= toColumn(point.x + radius);
+        column++
+      ) {
+        const cell = row * columns + column;
+        if (distance(center(cell), point) <= radius) cells.push(cell);
+      }
+    }
+    return cells;
+  };
 
   const free = new Uint8Array(columns * rows);
   for (let cell = 0; cell < free.length; cell++) {
@@ -180,26 +202,17 @@ export function findRoutes(sector: SectorDefinition, shipRadius: number): Sector
       point.y <= bounds.maxY - shipRadius;
     free[cell] = inside ? 1 : 0;
   }
-  // Each solid blocks the cells around it; only its bounding box needs checking.
-  for (const solid of solids) {
+  for (const solid of sectorSolids(sector)) {
     const reach = solid.radius + shipRadius + margin;
-    const toColumn = (x: number) => Math.floor((x - bounds.minX) / ROUTE_CELL);
-    const toRow = (y: number) => Math.floor((y - bounds.minY) / ROUTE_CELL);
-    const firstRow = Math.max(0, toRow(solid.y - reach));
-    const lastRow = Math.min(rows - 1, toRow(solid.y + reach));
-    const firstColumn = Math.max(0, toColumn(solid.x - reach));
-    const lastColumn = Math.min(columns - 1, toColumn(solid.x + reach));
-    for (let row = firstRow; row <= lastRow; row++) {
-      for (let column = firstColumn; column <= lastColumn; column++) {
-        const cell = row * columns + column;
-        if (free[cell] && distance(center(cell), solid) < reach) free[cell] = 0;
-      }
+    // Cells exactly at `reach` stay free: the ship then just touches the solid's margin.
+    for (const cell of cellsWithin(solid, reach)) {
+      if (distance(center(cell), solid) < reach) free[cell] = 0;
     }
   }
 
   // Breadth-first search from the spawn over the 8 neighbours of each cell.
   const spawn = sector.shipSpawn.position;
-  const start = cellAt(spawn);
+  const start = toRow(spawn.y) * columns + toColumn(spawn.x);
   const parent = new Int32Array(free.length).fill(-1);
   if (free[start]) {
     parent[start] = start;
@@ -222,28 +235,21 @@ export function findRoutes(sector: SectorDefinition, shipRadius: number): Sector
     }
   }
 
-  const routeTo = (target: number): Vec2[] => {
+  /** Route to the first reached cell whose center is within `radius` of `point`. */
+  const routeNear = (point: Vec2, radius: number): Vec2[] | null => {
+    const target = cellsWithin(point, radius).find((cell) => parent[cell] !== -1);
+    if (target === undefined) return null;
     const cells = [target];
     for (let cell = target; cell !== start; cell = parent[cell] as number) {
       cells.push(parent[cell] as number);
     }
     return [spawn, ...cells.reverse().map(center)];
   };
-  const firstReached = (accept: (point: Vec2) => boolean): Vec2[] | null => {
-    for (let cell = 0; cell < free.length; cell++) {
-      if (parent[cell] !== -1 && accept(center(cell))) return routeTo(cell);
-    }
-    return null;
-  };
 
-  const zone = sector.extractionZones[0];
-  const { approachDistance } = OPEN_SECTOR.containers;
   return {
-    extraction: zone ? firstReached((point) => distance(point, zone) <= zone.radius) : null,
+    extractionZones: sector.extractionZones.map((zone) => routeNear(zone, zone.radius)),
     containers: sector.containers.map((container) =>
-      firstReached(
-        (point) => distance(point, container) - container.radius - shipRadius <= approachDistance,
-      ),
+      routeNear(container, container.radius + shipRadius + approachDistance),
     ),
   };
 }

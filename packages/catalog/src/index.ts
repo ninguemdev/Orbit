@@ -249,6 +249,11 @@ export interface SectorDefinition {
   readonly shipSpawn: { readonly position: Vec2; readonly angle: number };
 }
 
+/** Everything the ship collides with in a sector: asteroids and containers. */
+export function sectorSolids(sector: SectorDefinition): Circle[] {
+  return [...sector.obstacles, ...sector.containers];
+}
+
 export const SectorId = {
   Dev: 'sector.dev',
   /** Open sector generated for each mission from a private seed. */

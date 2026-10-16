@@ -5,6 +5,7 @@ import {
   SectorId,
   ShipHullId,
   type SectorDefinition,
+  sectorSolids,
   type ShipHullDefinition,
 } from '@orbit/catalog';
 import {
@@ -101,10 +102,7 @@ export class SectorSimulation {
     hullId: ShipHullId = ShipHullId.Scout,
   ) {
     this.sector = sector;
-    this.#geometry = {
-      bounds: sector.bounds,
-      obstacles: [...sector.obstacles, ...sector.containers],
-    };
+    this.#geometry = { bounds: sector.bounds, obstacles: sectorSolids(sector) };
     const hull = SHIP_HULLS[hullId];
     this.ship = {
       hull,
