@@ -4,8 +4,12 @@ import { ClassId, DEFAULT_APPEARANCE_COLOR, ItemId, ShipHullId } from '@orbit/ca
 import { postgresError } from '../src/client';
 import {
   type StartExpeditionRequest,
+  abortExpedition,
+  activateExpedition,
   cancelPreparation,
   getActiveExpedition,
+  getExpeditionRoster,
+  listRunningExpeditions,
   startExpedition,
 } from '../src/expedition/expeditions';
 import { createAccount } from '../src/identity/accounts';
@@ -433,5 +437,50 @@ describe('expedition start and reservations', () => {
     await t.pool.query('DELETE FROM accounts WHERE id = $1', [member.accountId]);
     expect(await count('expeditions', started.expeditionId)).toBe(1);
     expect(await expeditionsOf(leader.accountId)).toBe(1);
+  });
+
+  it('activates in time, and a technical abort returns the items once', async () => {
+    const alpha = await newPlayer();
+    const bravo = await newPlayer();
+    const started = await startExpedition(t.db, request([alpha, bravo]));
+    if (!started.ok) throw new Error(started.reason);
+
+    const roster = await getExpeditionRoster(t.db, started.expeditionId);
+    expect(roster?.state).toBe('PREPARING');
+    expect(roster?.members.map((member) => member.accountId).sort()).toEqual(
+      [alpha.accountId, bravo.accountId].sort(),
+    );
+    expect(roster?.members.every((member) => member.nick.startsWith('Exped_'))).toBe(true);
+
+    expect(await activateExpedition(t.db, started.expeditionId)).toBe('activated');
+    expect(await activateExpedition(t.db, started.expeditionId)).toBe('not_preparing');
+    // A started match is no longer a preparation to cancel.
+    expect(await cancelPreparation(t.db, started.expeditionId)).toBe('not_preparing');
+    expect((await getActiveExpedition(t.db, alpha.accountId))?.state).toBe('ACTIVE');
+    expect((await listRunningExpeditions(t.db)).map((row) => row.expeditionId)).toContain(
+      started.expeditionId,
+    );
+
+    expect(await abortExpedition(t.db, started.expeditionId)).toBe('aborted');
+    expect(await abortExpedition(t.db, started.expeditionId)).toBe('not_running');
+    expect(await getActiveExpedition(t.db, bravo.accountId)).toBeNull();
+    expect(await count('item_reservations', started.expeditionId)).toBe(0);
+    expect((await getExpeditionRoster(t.db, started.expeditionId))?.state).toBe(
+      'ABORTED_TECHNICAL',
+    );
+    // The items are free for the next expedition.
+    expect((await startExpedition(t.db, request([alpha, bravo]))).ok).toBe(true);
+  });
+
+  it('refuses to activate after the deadline, by the database clock', async () => {
+    const alpha = await newPlayer();
+    const started = await startExpedition(t.db, { ...request([alpha]), prepareSeconds: 1 });
+    if (!started.ok) throw new Error(started.reason);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(await activateExpedition(t.db, started.expeditionId)).toBe('expired');
+    expect((await getActiveExpedition(t.db, alpha.accountId))?.state).toBe('PREPARING');
+    expect(await cancelPreparation(t.db, started.expeditionId)).toBe('cancelled');
+    expect(await activateExpedition(t.db, randomUUID())).toBe('not_preparing');
+    expect(await abortExpedition(t.db, randomUUID())).toBe('not_found');
   });
 });

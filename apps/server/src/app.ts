@@ -1,6 +1,7 @@
-import { Server } from '@colyseus/core';
+import { randomUUID } from 'node:crypto';
+import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { DEV_ROOM_NAME, PARTY_ROOM_NAME } from '@orbit/contracts';
+import { DEV_ROOM_NAME, MISSION_ROOM_NAME, PARTY_ROOM_NAME } from '@orbit/contracts';
 import type { Database } from '@orbit/database';
 import type { ServerConfig } from './config';
 import type { IdentityService } from './modules/identity/identity-service';
@@ -12,7 +13,9 @@ import { defineDevSectorRoom } from './transport/dev-sector-room';
 import { createAccountApi } from './transport/http/account-routes';
 import { type ClassPreferences, definePartyRoom } from './transport/party-room';
 import { LoadoutService } from './modules/loadout/loadout-service';
-import type { ExpeditionStarter } from './modules/expedition/expedition-service';
+import type { MissionLifecycle } from './modules/expedition/expedition-service';
+import { MissionDirectory, MissionTicketStore } from './modules/mission/mission-directory';
+import { defineMissionRoom } from './transport/mission-room';
 
 /** Maximum size of one WebSocket message; intents are a few dozen bytes. */
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -25,7 +28,7 @@ export interface GameServices {
   /** Database for inventory routes. */
   readonly db?: Database;
   /** Reserves the loadouts of confirmed parties (needs the database). */
-  readonly expeditions?: ExpeditionStarter;
+  readonly expeditions?: MissionLifecycle;
   /** Invite code attempts allowed per address (PARTY_CODE_GUESSES_PER_ADDRESS). */
   readonly codeGuessesPerAddress?: number;
 }
@@ -49,6 +52,18 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
   const loadouts = services.db
     ? new LoadoutService(services.db, (accountId) => directory.preparationChanged(accountId))
     : undefined;
+  // Each reserved expedition gets its own mission room, created here (never by clients).
+  const { expeditions } = services;
+  const creationKey = randomUUID();
+  const missions = expeditions
+    ? {
+        tickets: new MissionTicketStore(),
+        directory: new MissionDirectory(
+          async (expeditionId) =>
+            (await matchMaker.createRoom(MISSION_ROOM_NAME, { expeditionId, creationKey })).roomId,
+        ),
+      }
+    : undefined;
   const server = new Server({
     greet: false,
     transport: new WebSocketTransport({
@@ -70,6 +85,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
                 party,
                 ...(services.db ? { db: services.db } : {}),
                 ...(loadouts ? { loadouts } : {}),
+                ...(missions ? { missions } : {}),
                 access: policy,
                 cookie: { secure: config.cookieSecure },
               }),
@@ -93,8 +109,19 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
       directory,
       ...(services.classPreferences ? { classPreferences: services.classPreferences } : {}),
       ...(loadouts ? { loadouts } : {}),
-      ...(services.expeditions ? { expeditions: services.expeditions } : {}),
+      ...(expeditions && missions ? { expeditions, missions: missions.directory } : {}),
     }),
   );
+  if (expeditions && missions) {
+    server.define(
+      MISSION_ROOM_NAME,
+      defineMissionRoom({
+        creationKey,
+        tickets: missions.tickets,
+        expeditions,
+        directory: missions.directory,
+      }),
+    );
+  }
   return server;
 }

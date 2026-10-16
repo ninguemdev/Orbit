@@ -46,8 +46,12 @@ export const PartyServerMessage = {
 } as const;
 
 export interface ExpeditionEndedNotice {
-  /** `expired`: no match started before the deadline; `party_changed`: the party changed. */
-  readonly reason: 'expired' | 'party_changed';
+  /**
+   * `expired`: no match started before the deadline; `party_changed`: the party changed;
+   * `aborted`: the match room closed and the reserved items went back (until extraction
+   * and settlement exist, this is how a match ends).
+   */
+  readonly reason: 'expired' | 'party_changed' | 'aborted';
 }
 
 export const partyInviteSchema = z.strictObject({ nick: nickSchema });
@@ -134,7 +138,7 @@ export interface PartyStateView {
   readonly confirmedRevision: number;
   /** Expedition created by the confirmation; empty when there is none. */
   readonly expeditionId: string;
-  /** `PREPARING` while the reserved items wait for the match; empty when there is none. */
+  /** `PREPARING` while the members load into the match, then `ACTIVE`; empty when none. */
   readonly expeditionState: string;
   /** Seconds before an unstarted preparation is cancelled, counted by the server. */
   readonly prepareSecondsLeft: number;
