@@ -4,6 +4,14 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 
 ## Unreleased
 
+### Alterado
+
+- Menu principal em colunas para janela de PC 16:9 (party; nave, classe e prontidão; inventário e loadout), com barra superior de conta e ações.
+
+### Corrigido
+
+- O menu e as telas de acesso voltam a rolar quando não cabem na janela.
+
 ## 0.2.0 — 2026-10-15
 
 ### Adicionado

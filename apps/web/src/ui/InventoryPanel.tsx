@@ -7,7 +7,7 @@ export function InventoryPanel({ inventory: controls }: { inventory: InventoryCo
   const { inventory, error, loading } = controls;
 
   return (
-    <section className="inventory" aria-label="Inventário" data-testid="inventory">
+    <section className="panel" aria-label="Inventário" data-testid="inventory">
       <h2>Inventário</h2>
       {error ? (
         <p role="alert" className="error">

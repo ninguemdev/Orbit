@@ -29,7 +29,7 @@ export function RecoveryCodePanel({ hasCode, suggested, onChange }: RecoveryCode
 
   if (code) {
     return (
-      <section className="recovery" aria-label="Código de recuperação">
+      <section className="panel recovery" aria-label="Código de recuperação">
         <p>
           Seu código de recuperação. Anote e guarde em local seguro: ele não será mostrado de novo e
           funciona uma única vez.
@@ -45,7 +45,7 @@ export function RecoveryCodePanel({ hasCode, suggested, onChange }: RecoveryCode
   }
 
   return (
-    <section className="recovery" aria-label="Código de recuperação">
+    <section className="panel recovery" aria-label="Código de recuperação">
       {suggested ? (
         <p>
           Conta criada. Quer gerar um código de recuperação? É opcional, mas sem ele não há como
