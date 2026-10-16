@@ -41,6 +41,8 @@ export const AccountErrorCode = {
   InvalidLoadout: 'invalid_loadout',
   /** The account is in an expedition: its reserved equipment cannot change. */
   InExpedition: 'in_expedition',
+  /** The account has no expedition with a mission room to enter. */
+  NoMission: 'no_mission',
 } as const;
 export type AccountErrorCode = (typeof AccountErrorCode)[keyof typeof AccountErrorCode];
 

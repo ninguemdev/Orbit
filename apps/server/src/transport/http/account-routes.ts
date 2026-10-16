@@ -3,6 +3,8 @@ import {
   AccountErrorCode,
   type AccountErrorBody,
   AccountRoute,
+  MissionRoute,
+  type MissionTicketResponse,
   PartyRoute,
   type RecoveryCodeResponse,
   SESSION_COOKIE,
@@ -17,6 +19,7 @@ import {
 import {
   type ActiveSession,
   type Database,
+  getActiveExpedition,
   getInventory,
   getShipLicenses,
   moveStashItem,
@@ -27,6 +30,7 @@ import type { LoadoutService } from '../../modules/loadout/loadout-service';
 import { clientAddressKey } from '../../infrastructure/client-address';
 import { OverloadedError } from '../../infrastructure/semaphore';
 import type { PartyAccess } from '../../modules/party/party-access';
+import type { MissionDirectory, MissionTicketStore } from '../../modules/mission/mission-directory';
 import type {
   IdentityFailure,
   IdentityService,
@@ -45,6 +49,11 @@ export interface AccountApiOptions {
   readonly db?: Database;
   /** Loadout reads and saves; omitted by servers without a database. */
   readonly loadouts?: LoadoutService;
+  /** Mission room tickets for expedition members (needs `db`). */
+  readonly missions?: {
+    readonly tickets: MissionTicketStore;
+    readonly directory: MissionDirectory;
+  };
   readonly now?: () => Date;
 }
 
@@ -63,6 +72,7 @@ const STATUS: Record<string, number> = {
   [AccountErrorCode.InvalidSlot]: 400,
   [AccountErrorCode.InvalidLoadout]: 422,
   [AccountErrorCode.InExpedition]: 409,
+  [AccountErrorCode.NoMission]: 404,
   [AccountErrorCode.UnsupportedMediaType]: 415,
   [AccountErrorCode.RateLimited]: 429,
   [AccountErrorCode.Overloaded]: 503,
@@ -300,6 +310,32 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
         );
         if (!result.ok) return fail(response, result.code);
         response.status(201).json(result.response);
+      }),
+    );
+  }
+
+  const { missions } = options;
+  if (missions && db) {
+    router.post(
+      MissionRoute.Tickets,
+      withSession(async (request, response, session) => {
+        if (request.body !== undefined && !emptyBodySchema.safeParse(request.body).success) {
+          return fail(response, AccountErrorCode.InvalidInput);
+        }
+        // The expedition comes from the session's account, never from the request.
+        const active = await getActiveExpedition(db, session.accountId);
+        const roomId = active ? await missions.directory.roomOf(active.expeditionId) : null;
+        if (!active || !roomId) return fail(response, AccountErrorCode.NoMission);
+        const body: MissionTicketResponse = {
+          roomId,
+          ticket: missions.tickets.issue({
+            accountId: session.accountId,
+            nick: session.nick,
+            expeditionId: active.expeditionId,
+            roomId,
+          }),
+        };
+        response.status(201).json(body);
       }),
     );
   }

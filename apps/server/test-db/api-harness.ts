@@ -14,7 +14,7 @@ import type pg from 'pg';
 import { type GameServices, createGameServer } from '../src/app';
 import {
   ExpeditionService,
-  type ExpeditionStarter,
+  type MissionLifecycle,
 } from '../src/modules/expedition/expedition-service';
 import { type IdentityPolicy, IdentityService } from '../src/modules/identity/identity-service';
 import { type PasswordHasher, createArgon2Hasher } from '../src/modules/identity/password-hasher';
@@ -39,7 +39,7 @@ export async function startApiServer(
   options: {
     readonly prepareSeconds?: number;
     /** Wraps the expedition service, e.g. to hold a start while the party changes. */
-    readonly wrapExpeditions?: (service: ExpeditionService) => ExpeditionStarter;
+    readonly wrapExpeditions?: (service: ExpeditionService) => MissionLifecycle;
   } = {},
 ): Promise<ApiServer> {
   const throwaway = await createThrowawayDatabase(readDatabaseUrl(), 'orbit_api_test');

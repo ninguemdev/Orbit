@@ -14,6 +14,7 @@ import type { LoadoutPick } from '../inventory/loadout';
 import {
   type ExpeditionState,
   TERMINAL_EXPEDITION_STATES,
+  accounts,
   activeParticipations,
   expeditionMembers,
   expeditions,
@@ -336,16 +337,18 @@ export async function startExpedition(
 export type CancelPreparationResult = 'cancelled' | 'not_preparing' | 'not_found';
 
 /**
- * Cancels an expedition that never became active: its reservations and the members'
- * participations are removed in one transaction, so the items are available again.
- * Calling it again, or on an expedition that already started, changes nothing.
+ * Ends an expedition in `from` as `to`, returning every reservation and ending the
+ * members' participations in one transaction. Nothing is granted or consumed: the
+ * reserved items never left the stash. Returns the state found, or null if none.
  */
-export async function cancelPreparation(
+async function endReturningItems(
   db: Database,
   expeditionId: string,
-): Promise<CancelPreparationResult> {
-  if (!UUID.test(expeditionId)) return 'not_found';
-  return db.transaction(async (tx): Promise<CancelPreparationResult> => {
+  from: readonly ExpeditionState[],
+  to: ExpeditionState,
+): Promise<{ readonly ended: boolean } | null> {
+  if (!UUID.test(expeditionId)) return null;
+  return db.transaction(async (tx) => {
     const members = await tx
       .select({ accountId: expeditionMembers.accountId })
       .from(expeditionMembers)
@@ -360,8 +363,8 @@ export async function cancelPreparation(
           WHERE ${expeditions.id} = ${expeditionId} FOR UPDATE`,
     );
     const state = rows.rows[0]?.state;
-    if (state === undefined) return 'not_found';
-    if (state !== 'PREPARING') return 'not_preparing';
+    if (state === undefined) return null;
+    if (!(from as readonly string[]).includes(state)) return { ended: false };
 
     await tx.delete(itemReservations).where(eq(itemReservations.expeditionId, expeditionId));
     await tx
@@ -369,10 +372,123 @@ export async function cancelPreparation(
       .where(eq(activeParticipations.expeditionId, expeditionId));
     await tx
       .update(expeditions)
-      .set({ state: 'CANCELLED', endedAt: sql`now()` })
+      .set({ state: to, endedAt: sql`now()` })
       .where(eq(expeditions.id, expeditionId));
-    return 'cancelled';
+    return { ended: true };
   });
+}
+
+/**
+ * Cancels an expedition that never became active: its reservations and the members'
+ * participations are removed in one transaction, so the items are available again.
+ * Calling it again, or on an expedition that already started, changes nothing.
+ */
+export async function cancelPreparation(
+  db: Database,
+  expeditionId: string,
+): Promise<CancelPreparationResult> {
+  const result = await endReturningItems(db, expeditionId, ['PREPARING'], 'CANCELLED');
+  if (!result) return 'not_found';
+  return result.ended ? 'cancelled' : 'not_preparing';
+}
+
+export type AbortExpeditionResult = 'aborted' | 'not_running' | 'not_found';
+
+/**
+ * Technical abort of a running expedition (docs/12): the original reserved items go
+ * back, nothing new is granted. Used for orphans of a previous process and, until
+ * extraction and settlement exist (V03.05, V03.07), for a mission room that closes.
+ */
+export async function abortExpedition(
+  db: Database,
+  expeditionId: string,
+): Promise<AbortExpeditionResult> {
+  const result = await endReturningItems(
+    db,
+    expeditionId,
+    ['ACTIVE', 'EXTRACTING'],
+    'ABORTED_TECHNICAL',
+  );
+  if (!result) return 'not_found';
+  return result.ended ? 'aborted' : 'not_running';
+}
+
+export type ActivateExpeditionResult = 'activated' | 'expired' | 'not_preparing';
+
+/**
+ * Starts the match: PREPARING becomes ACTIVE, only before the deadline (by the
+ * database clock). A late activation leaves the expedition to be cancelled.
+ */
+export async function activateExpedition(
+  db: Database,
+  expeditionId: string,
+): Promise<ActivateExpeditionResult> {
+  if (!UUID.test(expeditionId)) return 'not_preparing';
+  return db.transaction(async (tx): Promise<ActivateExpeditionResult> => {
+    const rows = await tx.execute<{ state: string; in_time: boolean }>(
+      sql`SELECT ${expeditions.state} AS state, ${expeditions.prepareDeadlineAt} > now() AS in_time
+          FROM ${expeditions} WHERE ${expeditions.id} = ${expeditionId} FOR UPDATE`,
+    );
+    const row = rows.rows[0];
+    if (row?.state !== 'PREPARING') return 'not_preparing';
+    if (!row.in_time) return 'expired';
+    await tx.update(expeditions).set({ state: 'ACTIVE' }).where(eq(expeditions.id, expeditionId));
+    return 'activated';
+  });
+}
+
+export interface ExpeditionRoster {
+  readonly expeditionId: string;
+  readonly state: ExpeditionState;
+  readonly shipId: string;
+  readonly leaderAccountId: string;
+  readonly members: readonly {
+    readonly accountId: string;
+    readonly nick: string;
+    readonly classId: string;
+  }[];
+}
+
+/** Who takes part in an expedition, as recorded when it was created. */
+export async function getExpeditionRoster(
+  db: Database,
+  expeditionId: string,
+): Promise<ExpeditionRoster | null> {
+  if (!UUID.test(expeditionId)) return null;
+  return db.transaction(
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          state: expeditions.state,
+          shipId: expeditions.shipId,
+          leaderAccountId: expeditions.leaderAccountId,
+        })
+        .from(expeditions)
+        .where(eq(expeditions.id, expeditionId));
+      if (!row) return null;
+      const members = await tx
+        .select({
+          accountId: expeditionMembers.accountId,
+          nick: accounts.nick,
+          classId: expeditionMembers.classId,
+        })
+        .from(expeditionMembers)
+        .innerJoin(accounts, eq(accounts.id, expeditionMembers.accountId))
+        .where(eq(expeditionMembers.expeditionId, expeditionId))
+        .orderBy(asc(accounts.nickNormalized));
+      return { expeditionId, ...row, state: row.state as ExpeditionState, members };
+    },
+    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+  );
+}
+
+/** Expeditions running now (recovery: after a restart none of them has a room). */
+export async function listRunningExpeditions(db: Database): Promise<string[]> {
+  const rows = await db
+    .select({ expeditionId: expeditions.id })
+    .from(expeditions)
+    .where(inArray(expeditions.state, ['ACTIVE', 'EXTRACTING']));
+  return rows.map((row) => row.expeditionId);
 }
 
 export interface PendingPreparation {

@@ -1,0 +1,176 @@
+import { type AuthContext, type Client, ServerError } from '@colyseus/core';
+import {
+  MISSION_CANCELLED_CLOSE_CODE,
+  MISSION_ENDED_CLOSE_CODE,
+  RoomPhase,
+} from '@orbit/contracts';
+import { errorName } from '../infrastructure/error-name';
+import type { MissionLifecycle } from '../modules/expedition/expedition-service';
+import type {
+  MissionDirectory,
+  MissionTicket,
+  MissionTicketStore,
+} from '../modules/mission/mission-directory';
+import { SectorRoom } from './sector-room';
+
+export interface MissionRoomDeps {
+  /** Secret of this process: only rooms created by the server carry it. */
+  readonly creationKey: string;
+  readonly tickets: MissionTicketStore;
+  readonly expeditions: MissionLifecycle;
+  readonly directory: MissionDirectory;
+}
+
+/** Set by the server when it creates the room; clients cannot create mission rooms. */
+export interface MissionRoomOptions {
+  readonly expeditionId: string;
+  readonly creationKey: string;
+}
+
+type MissionClient = Client<{ auth: MissionTicket }>;
+
+/**
+ * The match of one expedition. Only its members enter, each with a single-use ticket
+ * naming this room; the expedition becomes ACTIVE when the whole roster has loaded
+ * before the preparation deadline, otherwise the preparation is cancelled and the
+ * room closes. Until extraction and settlement exist (V03.05, V03.07), a match ends
+ * when the room closes, as a technical abort that returns the reserved items.
+ */
+export class MissionRoom extends SectorRoom<MissionTicket> {
+  /** Replaced by `defineMissionRoom`. */
+  protected deps: MissionRoomDeps | undefined;
+  #expeditionId = '';
+  /** Nick of each member of the roster, by account. */
+  readonly #roster = new Map<string, string>();
+  /** Session holding each member's seat (connected or reconnecting). */
+  readonly #seats = new Map<string, string>();
+  #activating = false;
+  #activated = false;
+  /** The expedition ended (cancelled or aborted): nothing more to do on dispose. */
+  #ended = false;
+  #unwatch: (() => void) | null = null;
+
+  /** Refuses everyone unless registered through `defineMissionRoom`. */
+  static override async onAuth(
+    _token: string,
+    _options: unknown,
+    _context: AuthContext,
+  ): Promise<MissionTicket> {
+    throw new ServerError(403, 'invalid_ticket');
+  }
+
+  get #deps(): MissionRoomDeps {
+    if (!this.deps) throw new Error('MissionRoom sem dependências');
+    return this.deps;
+  }
+
+  override async onCreate(options: Partial<MissionRoomOptions> | undefined): Promise<void> {
+    // A client asking the matchmaker to create a mission room does not know the key.
+    if (options?.creationKey !== this.#deps.creationKey || !options.expeditionId) {
+      throw new ServerError(403, 'mission_rooms_are_created_by_the_server');
+    }
+    super.onCreate();
+    const roster = await this.#deps.expeditions.roster(options.expeditionId);
+    if (!roster || roster.state !== 'PREPARING') {
+      throw new Error('Expedição sem preparação para abrir a sala');
+    }
+    this.#expeditionId = roster.expeditionId;
+    for (const member of roster.members) this.#roster.set(member.accountId, member.nick);
+    this.maxClients = roster.members.length;
+    // Not listed for matchmaking; joining needs this room's ID and a ticket for it.
+    await this.setPrivate(true);
+    // The deadline, not an empty room, decides when an unstarted match is given up.
+    this.autoDispose = false;
+    this.#unwatch = this.#deps.expeditions.watch(this.#expeditionId, {
+      onCancelled: () => this.#close(MISSION_CANCELLED_CLOSE_CODE),
+      onAborted: () => this.#close(MISSION_ENDED_CLOSE_CODE),
+    });
+  }
+
+  override onJoin(client: MissionClient): void {
+    const ticket = client.auth;
+    if (
+      !ticket ||
+      ticket.roomId !== this.roomId ||
+      ticket.expeditionId !== this.#expeditionId ||
+      !this.#roster.has(ticket.accountId)
+    ) {
+      throw new ServerError(403, 'invalid_ticket');
+    }
+    if (this.#ended) throw new ServerError(410, 'mission_ended');
+    // A second window would duplicate the character; the first one keeps the seat.
+    if (this.#seats.has(ticket.accountId)) {
+      throw new ServerError(409, 'already_in_mission');
+    }
+    this.#seats.set(ticket.accountId, client.sessionId);
+    this.addCrewMember(client.sessionId, this.#roster.get(ticket.accountId) ?? ticket.nick);
+    this.syncState();
+    if (this.#seats.size === this.#roster.size) void this.#activate();
+  }
+
+  override onLeave(client: MissionClient): void {
+    super.onLeave(client);
+    const accountId = client.auth?.accountId;
+    if (accountId && this.#seats.get(accountId) === client.sessionId) this.#seats.delete(accountId);
+  }
+
+  override onDispose(): void {
+    this.#unwatch?.();
+    this.#deps.directory.closed(this.#expeditionId);
+    if (this.#ended || !this.#expeditionId) return;
+    this.#ended = true;
+    const expeditions = this.#deps.expeditions;
+    const ending = this.#activated
+      ? expeditions.abort(this.#expeditionId)
+      : expeditions.cancel(this.#expeditionId, 'room_closed');
+    ending.catch((error: unknown) => {
+      console.error(`[mission] não foi possível encerrar a expedição: ${errorName(error)}`);
+    });
+  }
+
+  /** Everyone loaded: the match starts if the preparation is still in time. */
+  async #activate(): Promise<void> {
+    if (this.#activating || this.#activated) return;
+    this.#activating = true;
+    try {
+      const result = await this.#deps.expeditions.activate(this.#expeditionId);
+      if (result === 'activated') {
+        this.#activated = true;
+        this.state.phase = RoomPhase.Active;
+        // From now on the match ends when everyone is gone (after reconnection windows).
+        this.autoDispose = true;
+        return;
+      }
+      // Too late: the deadline cancels the preparation and returns the items.
+      if (result === 'expired') return;
+      this.#close(MISSION_CANCELLED_CLOSE_CODE);
+    } catch (error) {
+      console.error(`[mission] não foi possível ativar a expedição: ${errorName(error)}`);
+    } finally {
+      this.#activating = false;
+    }
+  }
+
+  #close(code: number): void {
+    if (this.#ended) return;
+    this.#ended = true;
+    void this.disconnect(code);
+  }
+}
+
+/** Binds the mission room to this server's tickets and expeditions. */
+export function defineMissionRoom(deps: MissionRoomDeps): typeof MissionRoom {
+  return class ConfiguredMissionRoom extends MissionRoom {
+    protected override deps: MissionRoomDeps | undefined = deps;
+
+    static override async onAuth(
+      token: string,
+      _options: unknown,
+      _context: AuthContext,
+    ): Promise<MissionTicket> {
+      const ticket = deps.tickets.consume(token);
+      if (!ticket) throw new ServerError(403, 'invalid_ticket');
+      return ticket;
+    }
+  };
+}
