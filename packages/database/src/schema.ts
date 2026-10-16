@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -266,5 +267,141 @@ export const shipUnlocks = pgTable(
   (table) => [
     primaryKey({ columns: [table.accountId, table.shipId] }),
     check('ship_unlocks_ship_id_format', sql`${table.shipId} ~ '^ship\\.[a-z0-9_]+$'`),
+  ],
+);
+
+/** Lifecycle of an expedition (docs/05). Terminal states have `ended_at`. */
+export const EXPEDITION_STATES = [
+  'PREPARING',
+  'ACTIVE',
+  'EXTRACTING',
+  'SETTLING',
+  'CLOSED',
+  'CANCELLED',
+  'FAILED',
+  'ABORTED_TECHNICAL',
+] as const;
+export type ExpeditionState = (typeof EXPEDITION_STATES)[number];
+export const TERMINAL_EXPEDITION_STATES = [
+  'CLOSED',
+  'CANCELLED',
+  'FAILED',
+  'ABORTED_TECHNICAL',
+] as const satisfies readonly ExpeditionState[];
+const quoted = (values: readonly string[]) =>
+  sql.raw(values.map((value) => `'${value}'`).join(', '));
+
+/**
+ * One match of one party. Created in PREPARING by the leader's confirmation; the
+ * `start_key` makes a retried confirmation return the same expedition, and
+ * `request_hash` tells a retry apart from a different request reusing the key.
+ */
+export const expeditions = pgTable(
+  'expeditions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    state: text('state').notNull().default('PREPARING'),
+    startKey: text('start_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    leaderAccountId: uuid('leader_account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    shipId: text('ship_id').notNull(),
+    catalogVersion: integer('catalog_version').notNull(),
+    /** A PREPARING expedition past this moment is cancelled and its items returned. */
+    prepareDeadlineAt: timestamp('prepare_deadline_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('expeditions_start_key_key').on(table.startKey),
+    check('expeditions_state_known', sql`${table.state} IN (${quoted(EXPEDITION_STATES)})`),
+    check(
+      'expeditions_ended_when_terminal',
+      sql`(${table.state} IN (${quoted(TERMINAL_EXPEDITION_STATES)})) = (${table.endedAt} IS NOT NULL)`,
+    ),
+    check('expeditions_start_key_length', sql`length(${table.startKey}) BETWEEN 1 AND 200`),
+    check('expeditions_request_hash_sha256_hex', sql`${table.requestHash} ~ '^[0-9a-f]{64}$'`),
+    check('expeditions_ship_id_format', sql`${table.shipId} ~ '^ship\\.[a-z0-9_]+$'`),
+  ],
+);
+
+/** A player in an expedition, with the class and loadout frozen when it was created. */
+export const expeditionMembers = pgTable(
+  'expedition_members',
+  {
+    expeditionId: uuid('expedition_id')
+      .notNull()
+      .references(() => expeditions.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    classId: text('class_id').notNull(),
+    /** Snapshot of the reserved loadout: `[{ slot, instanceId, itemId, quantity }]`. */
+    loadout: jsonb('loadout').notNull(),
+    /** Outcome for this member, set by the settlement (V03.07). */
+    finalState: text('final_state'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.expeditionId, table.accountId] }),
+    index('expedition_members_account_idx').on(table.accountId),
+    check('expedition_members_class_id_format', sql`${table.classId} ~ '^class\\.[a-z]+$'`),
+  ],
+);
+
+/**
+ * The expedition an account is in right now. The primary key on the account makes a
+ * second simultaneous expedition impossible; the row goes away when it ends.
+ */
+export const activeParticipations = pgTable(
+  'active_participations',
+  {
+    accountId: uuid('account_id').primaryKey(),
+    expeditionId: uuid('expedition_id').notNull(),
+  },
+  (table) => [
+    unique('active_participations_account_expedition').on(table.accountId, table.expeditionId),
+    index('active_participations_expedition_idx').on(table.expeditionId),
+    foreignKey({
+      name: 'active_participations_member',
+      columns: [table.expeditionId, table.accountId],
+      foreignColumns: [expeditionMembers.expeditionId, expeditionMembers.accountId],
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Items taken to an expedition. The primary key on the item reserves it at most once;
+ * the item must be in its owner's stash and cannot be deleted while reserved, and a
+ * reservation cannot outlive its owner's active participation.
+ */
+export const itemReservations = pgTable(
+  'item_reservations',
+  {
+    itemInstanceId: uuid('item_instance_id').primaryKey(),
+    expeditionId: uuid('expedition_id').notNull(),
+    accountId: uuid('account_id').notNull(),
+    slot: text('slot').notNull(),
+    /** The whole stack is taken; grants do not top up a reserved stack. */
+    quantity: integer('quantity').notNull(),
+    location: text('location').notNull().default('stash'),
+  },
+  (table) => [
+    unique('item_reservations_member_slot').on(table.expeditionId, table.accountId, table.slot),
+    index('item_reservations_participation_idx').on(table.accountId, table.expeditionId),
+    foreignKey({
+      name: 'item_reservations_item_owned_in_stash',
+      columns: [table.itemInstanceId, table.accountId, table.location],
+      foreignColumns: [itemInstances.id, itemInstances.ownerAccountId, itemInstances.location],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'item_reservations_participation',
+      columns: [table.accountId, table.expeditionId],
+      foreignColumns: [activeParticipations.accountId, activeParticipations.expeditionId],
+    }).onDelete('restrict'),
+    check('item_reservations_slot_known', sql`${table.slot} IN (${quoted(LOADOUT_SLOTS)})`),
+    check('item_reservations_quantity_positive', sql`${table.quantity} > 0`),
+    check('item_reservations_location_stash', sql`${table.location} = 'stash'`),
   ],
 );

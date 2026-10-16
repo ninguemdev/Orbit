@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, notExists, sql } from 'drizzle-orm';
 import { ITEMS, STARTER_PACKAGE, STASH_SLOTS, isItemId, sortByShipOrder } from '@orbit/catalog';
 import type { Database } from '../client';
 import {
@@ -7,6 +7,7 @@ import {
   inboxEntries,
   inventorySlots,
   itemInstances,
+  itemReservations,
   shipUnlocks,
   wallets,
 } from '../schema';
@@ -149,7 +150,7 @@ export interface GrantResult {
 
 /**
  * Adds items to the account: first tops up existing partial stacks of the same item
- * in the stash, then opens new stacks of at most `maxStack` in free slots, and puts
+ * in the stash (except reserved ones), then opens new stacks of at most `maxStack` in free slots, and puts
  * what does not fit in the inbox. Nothing granted is ever discarded. Units added to an
  * existing stack keep that stack's origin; the economy ledger (0.3) records each grant.
  */
@@ -178,6 +179,14 @@ export async function grantItem(db: Database, grant: GrantItem): Promise<GrantRe
             eq(itemInstances.ownerAccountId, grant.accountId),
             eq(itemInstances.itemId, grant.itemId),
             lt(itemInstances.quantity, maxStack),
+            // A reserved stack went to an expedition with its quantity; new units
+            // must not ride along.
+            notExists(
+              tx
+                .select({ id: itemReservations.itemInstanceId })
+                .from(itemReservations)
+                .where(eq(itemReservations.itemInstanceId, itemInstances.id)),
+            ),
           ),
         )
         .orderBy(asc(inventorySlots.slot));

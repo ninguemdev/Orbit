@@ -4,6 +4,10 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 
 ## Unreleased
 
+### Adicionado
+
+- Reserva atômica de expedição no banco (migração `0007_expeditions`): expedição `PREPARING` com chave de início idempotente, snapshot de classe e loadout de cada membro, participação ativa única por conta e reserva única por item, revalidando classe, loadout e licença da nave sob lock. Cancelar a preparação devolve as reservas. Ainda não é chamada pela party.
+
 ### Alterado
 
 - Menu principal em colunas para janela de PC 16:9 (party; nave, classe e prontidão; inventário e loadout), com barra superior de conta e ações.
