@@ -35,7 +35,7 @@ export interface PartyView {
   /** Revision the leader confirmed; 0 when there is no valid confirmation. */
   readonly confirmedRevision: number;
   /** Expedition reserved by the confirmation, while it waits for the match. */
-  readonly expedition: { readonly id: string; readonly prepareDeadline: number } | null;
+  readonly expedition: { readonly id: string; readonly secondsLeft: number } | null;
   /** Ordered by arrival. */
   readonly members: readonly PartyMember[];
 }
@@ -169,7 +169,7 @@ function toView(state: PartyStateView): PartyView {
     confirmedRevision: state.confirmedRevision ?? 0,
     expedition:
       state.expeditionId && state.expeditionState === 'PREPARING'
-        ? { id: state.expeditionId, prepareDeadline: state.prepareDeadline ?? 0 }
+        ? { id: state.expeditionId, secondsLeft: state.prepareSecondsLeft ?? 0 }
         : null,
     members: members.map((entry) => entry.member),
   };

@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_ORDER } from '@orbit/catalog';
 import type { PartyPanelProps } from './PartyPanel';
 import { shipName } from './catalog-names';
@@ -93,7 +92,7 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
             Preparação confirmada pelo líder.
           </p>
         ) : null}
-        {view.expedition ? <PreparationStatus deadline={view.expedition.prepareDeadline} /> : null}
+        {view.expedition ? <PreparationStatus secondsLeft={view.expedition.secondsLeft} /> : null}
         <button
           type="button"
           onClick={() => party.setReady(view.revision, !me?.ready)}
@@ -117,19 +116,13 @@ export function MissionSetupPanel({ party, myAccountId }: PartyPanelProps) {
 
 /**
  * Reserved items waiting for the match. The match room arrives in the next step of
- * 0.3; until then the server cancels the preparation at its deadline.
+ * 0.3; until then the server cancels the preparation when its countdown ends.
  */
-function PreparationStatus({ deadline }: { deadline: number }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const seconds = Math.max(0, Math.ceil((deadline - now) / 1000));
+function PreparationStatus({ secondsLeft }: { secondsLeft: number }) {
   return (
     <p className="notice" data-testid="expedition-preparing">
       Itens reservados para a missão. A partida com a party ainda não abre nesta versão: a
-      preparação expira em {seconds} s e os itens voltam ao stash.
+      preparação expira em {secondsLeft} s e os itens voltam ao stash.
     </p>
   );
 }

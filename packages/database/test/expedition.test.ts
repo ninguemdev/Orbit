@@ -154,7 +154,13 @@ describe('expedition start and reservations', () => {
       ...first,
       members: [...first.members].reverse(),
     });
-    expect(retried).toEqual({ ...created, created: false });
+    if (!retried.ok) throw new Error(retried.reason);
+    const { prepareRemainingMs: left, ...rest } = retried;
+    const { prepareRemainingMs: total, ...original } = created;
+    expect(rest).toEqual({ ...original, created: false });
+    // Time left is measured again by the database clock.
+    expect(left).toBeGreaterThan(0);
+    expect(left).toBeLessThanOrEqual(total);
     expect(await count('expedition_members', created.expeditionId)).toBe(2);
     expect(await count('item_reservations', created.expeditionId)).toBe(4);
 

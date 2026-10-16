@@ -24,7 +24,7 @@ export const PartyState = schema(
     confirmedRevision: t.float64().default(0),
     expeditionId: t.string().default(''),
     expeditionState: t.string().default(''),
-    prepareDeadline: t.float64().default(0),
+    prepareSecondsLeft: t.uint16().default(0),
     members: t.map(PartyMemberState),
   },
   'PartyState',

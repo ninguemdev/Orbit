@@ -218,7 +218,7 @@ describe('party confirmation reserves the expedition', () => {
     const { leader, guest, party, guestRoom, pistols } = await h.readyPair();
     await h.confirm(party);
     expect(party.state.confirmedRevision).toBe(party.state.revision);
-    expect(party.state.prepareDeadline).toBeGreaterThan(Date.now() + 20_000);
+    expect(party.state.prepareSecondsLeft).toBeGreaterThan(20);
     await waitFor(() => guestRoom.state.expeditionId === party.state.expeditionId, 'convidado vê');
 
     for (const [who, pistol] of [
@@ -262,10 +262,8 @@ describe('party confirmation reserves the expedition', () => {
     await waitFor(() => party.state.expeditionId === '', 'preparação desfeita');
     expect(party.state.revision).toBeGreaterThan(revision);
     expect(readyCount(party)).toBe(0);
-    await eventually(
-      async () => (await getActiveExpedition(api.db, guest.id)) === null,
-      'reservas devolvidas',
-    );
+    // The notice comes after the cancellation is committed.
+    expect(await getActiveExpedition(api.db, guest.id)).toBeNull();
     const stash = (await h.inventory(guest)).stash;
     expect(stash.find((entry) => entry.instanceId === pistols.guest)?.reserved).toBe(false);
 
@@ -311,6 +309,22 @@ describe('party confirmation reserves the expedition', () => {
     expect(party.state.expeditionId).toBe('');
     expect(await getActiveExpedition(api.db, leader.id)).toBeNull();
     expect(await cancelPreparation(api.db, other.expeditionId)).toBe('cancelled');
+  });
+
+  it('cancels the preparation when the leader passes leadership', async () => {
+    const { guest, party, guestRoom } = await h.readyPair();
+    await h.confirm(party);
+    const first = party.state.expeditionId;
+    party.send(PartyClientMessage.Promote, { accountId: guest.id });
+    await waitFor(() => party.state.expeditionId === '', 'preparação desfeita');
+    await eventually(
+      async () => (await getActiveExpedition(api.db, guest.id)) === null,
+      'reservas devolvidas',
+    );
+    // The new leader confirms a new expedition.
+    await h.readyAll(party, guestRoom);
+    await h.confirm(guestRoom);
+    expect(guestRoom.state.expeditionId).not.toBe(first);
   });
 });
 
@@ -372,9 +386,118 @@ describe('preparation deadline', () => {
         'preparação órfã cancelada',
       );
     } finally {
-      restarted.close();
+      await restarted.close();
     }
     const stash = (await h.inventory(leader)).stash;
     expect(stash.find((entry) => entry.instanceId === pistol)?.reserved).toBe(false);
+  });
+});
+
+describe('confirmation racing with the party', () => {
+  let api: ApiServer;
+  const h = partyHelpers(() => api);
+  /** While set, starts wait for it: the party can change in the middle of one. */
+  let gate: Promise<void> | null = null;
+
+  beforeAll(async () => {
+    api = await startApiServer(
+      POLICY,
+      {},
+      {
+        wrapExpeditions: (service) => ({
+          start: async (request, onExpired) => {
+            await gate;
+            return service.start(request, onExpired);
+          },
+          cancel: (expeditionId) => service.cancel(expeditionId),
+        }),
+      },
+    );
+  });
+
+  afterEach(async () => {
+    gate = null;
+    await h.leaveAll();
+  });
+
+  afterAll(async () => {
+    await api?.close();
+  });
+
+  it('retires the revision when the party changes during the start', async () => {
+    const { leader, party, guestRoom } = await h.readyPair();
+    const refused = h.messages<PartyRefusal>(party, PartyServerMessage.Refused);
+    let release: () => void = () => undefined;
+    gate = new Promise((resolve) => (release = resolve));
+    const revision = party.state.revision;
+    party.send(PartyClientMessage.Confirm, { revision });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Not ready keeps the revision while no expedition exists yet.
+    guestRoom.send(PartyClientMessage.SetReady, { revision, ready: false });
+    await waitFor(() => readyCount(party) === 1, 'convidado não pronto');
+    release();
+
+    await waitFor(() => refused.length === 1, 'confirmação recusada');
+    expect(refused[0]?.code).toBe('members_not_ready');
+    // The refusal is a message; the new revision follows with the next state patch.
+    await waitFor(() => party.state.revision > revision, 'revisão nova');
+    await eventually(
+      async () => (await getActiveExpedition(api.db, leader.id)) === null,
+      'expedição desfeita',
+    );
+    // The party can confirm again on the new revision.
+    gate = null;
+    await h.readyAll(party, guestRoom);
+    await h.confirm(party);
+    expect((await getActiveExpedition(api.db, leader.id))?.expeditionId).toBe(
+      party.state.expeditionId,
+    );
+  });
+
+  it('cancels at the deadline what a start with a lost answer created', async () => {
+    const leader = await h.player();
+    await updateProfileClass(api.db, leader.id, 'class.pilot');
+    const pistol = await h.equipPistol(leader);
+    // The transaction commits, but its answer never arrives.
+    let lose = true;
+    const flaky = new Proxy(api.db, {
+      get(target, property, receiver) {
+        if (property === 'transaction' && lose) {
+          lose = false;
+          return async (...args: Parameters<typeof target.transaction>) => {
+            await target.transaction(...args);
+            throw new Error('resposta perdida');
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+    const service = new ExpeditionService(flaky, { prepareSeconds: 1 });
+    try {
+      await expect(
+        service.start(
+          {
+            partyKey: randomUUID(),
+            leaderAccountId: leader.id,
+            shipId: ShipHullId.Scout,
+            members: [
+              {
+                accountId: leader.id,
+                classId: 'class.pilot',
+                loadout: [{ slot: 'sidearm', instanceId: pistol }],
+              },
+            ],
+          },
+          () => undefined,
+        ),
+      ).rejects.toThrow('resposta perdida');
+      expect((await getActiveExpedition(api.db, leader.id))?.state).toBe('PREPARING');
+      await eventually(
+        async () => (await getActiveExpedition(api.db, leader.id)) === null,
+        'preparação sem resposta cancelada',
+      );
+    } finally {
+      await service.close();
+    }
   });
 });

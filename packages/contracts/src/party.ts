@@ -136,8 +136,8 @@ export interface PartyStateView {
   readonly expeditionId: string;
   /** `PREPARING` while the reserved items wait for the match; empty when there is none. */
   readonly expeditionState: string;
-  /** Server time (ms since the epoch) when an unstarted preparation is cancelled. */
-  readonly prepareDeadline: number;
+  /** Seconds before an unstarted preparation is cancelled, counted by the server. */
+  readonly prepareSecondsLeft: number;
   readonly members: {
     forEach(cb: (member: PartyMemberView, accountId: string) => void): void;
     readonly size: number;
