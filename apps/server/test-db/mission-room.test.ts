@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
-import { SHIP_HULLS, SectorId, ShipHullId, type SectorDefinition } from '@orbit/catalog';
+import { ItemId, SHIP_HULLS, SectorId, ShipHullId, type SectorDefinition } from '@orbit/catalog';
 import {
   ClientMessage,
   type ExpeditionEndedNotice,
@@ -19,8 +19,10 @@ import {
   TICK_RATE_HZ,
 } from '@orbit/contracts';
 import {
+  type SettlementManifest,
   activateExpedition,
   getActiveExpedition,
+  settleExpedition,
   startExpedition,
   updateProfileClass,
 } from '@orbit/database';
@@ -74,6 +76,8 @@ function missionHelpers(get: () => ApiServer) {
 
 const closeCode = (room: MissionRoomClient) =>
   new Promise<number>((resolve) => room.onLeave((code) => resolve(code)));
+
+const hashOf = (label: string) => createHash('sha256').update(label).digest('hex');
 
 /** Walks the room's own crew member to a ship-local target, like a player would. */
 async function walkTo(room: MissionRoomClient, target: { x: number; y: number }) {
@@ -357,7 +361,7 @@ describe('mission room deadline', () => {
     expect(room.connection.isOpen).toBe(true);
   });
 
-  it('aborts, after a restart, the matches the previous process left running', async () => {
+  it('aborts, after a restart, the matches the previous process left running, without creating any loot', async () => {
     const leader = await party.player();
     await updateProfileClass(api.db, leader.id, 'class.pilot');
     const pistol = await party.equipPistol(leader);
@@ -383,6 +387,85 @@ describe('mission room deadline', () => {
         async () => (await getActiveExpedition(api.db, leader.id)) === null,
         'partida órfã encerrada',
       );
+      // Technical abort, not a settlement: the pistol itself comes back, unreserved,
+      // and nothing with the expedition's provenance was ever granted.
+      const stash = (await party.inventory(leader)).stash;
+      expect(stash.find((entry) => entry.instanceId === pistol)?.reserved).toBe(false);
+      const granted = await api.pool.query<{ n: string }>(
+        'SELECT count(*) AS n FROM item_instances WHERE origin = $1',
+        [`expedition:${started.expeditionId}`],
+      );
+      expect(Number(granted.rows[0]?.n)).toBe(0);
+      const state = await api.pool.query<{ state: string }>(
+        'SELECT state FROM expeditions WHERE id = $1',
+        [started.expeditionId],
+      );
+      expect(state.rows[0]?.state).toBe('ABORTED_TECHNICAL');
+    } finally {
+      await restarted.close();
+    }
+  });
+
+  it('leaves a normally settled expedition alone on recovery, never refunding or re-settling it', async () => {
+    const leader = await party.player();
+    await updateProfileClass(api.db, leader.id, 'class.pilot');
+    const pistol = await party.equipPistol(leader);
+    const started = await startExpedition(api.db, {
+      startKey: randomUUID(),
+      leaderAccountId: leader.id,
+      shipId: ShipHullId.Scout,
+      members: [
+        {
+          accountId: leader.id,
+          classId: 'class.pilot',
+          loadout: [{ slot: 'sidearm', instanceId: pistol }],
+        },
+      ],
+    });
+    if (!started.ok) throw new Error(started.reason);
+    expect(await activateExpedition(api.db, started.expeditionId)).toBe('activated');
+    const manifest: SettlementManifest = {
+      expeditionId: started.expeditionId,
+      outcome: 'extracted',
+      eligibleAccountIds: [leader.id],
+      destinations: [
+        {
+          sourceId: pistol,
+          accountId: leader.id,
+          itemId: ItemId.Pistol,
+          quantity: 1,
+          origin: 'loadout',
+        },
+      ],
+      losses: [],
+    };
+    expect(await settleExpedition(api.db, manifest, hashOf(started.expeditionId))).toEqual({
+      ok: true,
+    });
+    const before = await api.pool.query<{ state: string; ended_at: Date }>(
+      'SELECT state, ended_at FROM expeditions WHERE id = $1',
+      [started.expeditionId],
+    );
+    expect(before.rows[0]?.state).toBe('CLOSED');
+
+    const restarted = new ExpeditionService(api.db);
+    try {
+      await restarted.recover();
+      // Recovery only ever looks at ACTIVE/EXTRACTING; a settled expedition is
+      // terminal, so it must be untouched: same state, same ended_at, one settlement.
+      const after = await api.pool.query<{ state: string; ended_at: Date }>(
+        'SELECT state, ended_at FROM expeditions WHERE id = $1',
+        [started.expeditionId],
+      );
+      expect(after.rows[0]?.state).toBe('CLOSED');
+      expect(after.rows[0]?.ended_at).toEqual(before.rows[0]?.ended_at);
+      const settlements = await api.pool.query<{ n: string }>(
+        'SELECT count(*) AS n FROM settlements WHERE expedition_id = $1',
+        [started.expeditionId],
+      );
+      expect(Number(settlements.rows[0]?.n)).toBe(1);
+      const stash = (await party.inventory(leader)).stash;
+      expect(stash.find((entry) => entry.instanceId === pistol)?.reserved).toBe(false);
     } finally {
       await restarted.close();
     }
