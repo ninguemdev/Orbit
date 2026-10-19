@@ -4,7 +4,7 @@ import type { Circle, Rect, ShipHandling, Vec2 } from '@orbit/simulation';
  * Versioned game definitions. IDs are stable: never reuse an ID for a different
  * meaning; bump CATALOG_VERSION when definitions change.
  */
-export const CATALOG_VERSION = 4;
+export const CATALOG_VERSION = 5;
 
 export const ClassId = {
   Pilot: 'class.pilot',
@@ -119,6 +119,17 @@ export interface ShipHullDefinition {
   /** Interior obstacles: partitions, consoles and cargo. */
   readonly interiorWalls: readonly Rect[];
   readonly helm: ConsoleDefinition;
+  /**
+   * Cargo hatch at the stern: standing here, a crew member reaches the hold and, with
+   * the hull alongside a container, the container (EVA arrives in 0.5).
+   */
+  readonly cargoHatch: {
+    readonly id: string;
+    readonly position: Vec2;
+    readonly interactRadius: number;
+  };
+  /** Stacks the hold carries during a mission. */
+  readonly cargoSlots: number;
   readonly crewSpawns: readonly Vec2[];
 }
 
@@ -160,6 +171,8 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
       { minX: -140, minY: 42, maxX: -108, maxY: 70 },
     ],
     helm: { id: 'console.helm', seat: { x: 120, y: 0 }, interactRadius: 34, body: SCOUT_HELM_BODY },
+    cargoHatch: { id: 'hatch.cargo', position: { x: -125, y: 0 }, interactRadius: 30 },
+    cargoSlots: 24,
     crewSpawns: [
       { x: -40, y: -30 },
       { x: -40, y: 30 },
@@ -204,6 +217,8 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
       interactRadius: 34,
       body: HAULER_HELM_BODY,
     },
+    cargoHatch: { id: 'hatch.cargo', position: { x: -155, y: 0 }, interactRadius: 30 },
+    cargoSlots: 40,
     crewSpawns: [
       { x: -20, y: -30 },
       { x: -20, y: 30 },

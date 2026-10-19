@@ -60,6 +60,30 @@ export function isItemId(value: string): value is ItemId {
   return Object.hasOwn(ITEMS, value);
 }
 
+export interface LootEntry {
+  readonly itemId: ItemId;
+  /** Relative chance of each stack being this item. */
+  readonly weight: number;
+  readonly min: number;
+  /** Never above the item's maxStack: one stack holds the whole quantity. */
+  readonly max: number;
+}
+
+/** What a mission container holds: a few stacks drawn by weight from the table. */
+export const CONTAINER_LOOT: {
+  readonly stacks: { readonly min: number; readonly max: number };
+  readonly table: readonly LootEntry[];
+} = {
+  stacks: { min: 2, max: 4 },
+  table: [
+    { itemId: ItemId.Scrap, weight: 5, min: 5, max: 30 },
+    { itemId: ItemId.Ore, weight: 4, min: 5, max: 30 },
+    { itemId: ItemId.Medkit, weight: 2, min: 1, max: 3 },
+    { itemId: ItemId.RepairKit, weight: 1, min: 1, max: 1 },
+    { itemId: ItemId.Pistol, weight: 1, min: 1, max: 1 },
+  ],
+};
+
 /** Permanent stash capacity in slots; overflow goes to the inbox. */
 export const STASH_SLOTS = 40;
 

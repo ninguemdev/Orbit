@@ -15,6 +15,7 @@ import { type ClassPreferences, definePartyRoom } from './transport/party-room';
 import { LoadoutService } from './modules/loadout/loadout-service';
 import type { MissionLifecycle } from './modules/expedition/expedition-service';
 import { MissionDirectory, MissionTicketStore } from './modules/mission/mission-directory';
+import type { SectorDefinition } from '@orbit/catalog';
 import type { SectorSeed } from './simulation/sector-generator';
 import { defineMissionRoom } from './transport/mission-room';
 
@@ -32,6 +33,8 @@ export interface GameServices {
   readonly expeditions?: MissionLifecycle;
   /** Private seed of each mission sector; random unless a test needs to know it. */
   readonly sectorSeed?: () => SectorSeed;
+  /** Builds each mission sector from its seed; tests place containers on purpose. */
+  readonly generateSector?: (seed: SectorSeed) => SectorDefinition;
   /** Invite code attempts allowed per address (PARTY_CODE_GUESSES_PER_ADDRESS). */
   readonly codeGuessesPerAddress?: number;
 }
@@ -124,6 +127,7 @@ export function createGameServer(config: ServerConfig, services: GameServices = 
         expeditions,
         directory: missions.directory,
         ...(services.sectorSeed ? { sectorSeed: services.sectorSeed } : {}),
+        ...(services.generateSector ? { generateSector: services.generateSector } : {}),
       }),
     );
   }

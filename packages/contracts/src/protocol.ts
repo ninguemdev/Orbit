@@ -23,12 +23,16 @@ export const ClientMessage = {
   ShipInput: 'ship.input',
   HelmRequest: 'helm.request',
   HelmRelease: 'helm.release',
+  /** Mission rooms: move a stack between the container, the backpack and the hold. */
+  InventoryTransfer: 'inventory.transfer',
 } as const;
 export type ClientMessage = (typeof ClientMessage)[keyof typeof ClientMessage];
 
 /** Server → client notifications. */
 export const ServerMessage = {
   ActionRejected: 'action.rejected',
+  /** Mission rooms: the receiver's own view of the items it can see (MissionInventoryView). */
+  Inventory: 'mission.inventory',
 } as const;
 
 export const ErrorCode = {
@@ -40,6 +44,13 @@ export const ErrorCode = {
   HelmOutOfRange: 'helm_out_of_range',
   NotHelmOperator: 'not_helm_operator',
   AtHelm: 'at_helm',
+  MatchNotActive: 'match_not_active',
+  NotAtHatch: 'not_at_hatch',
+  ContainerOutOfReach: 'container_out_of_reach',
+  InvalidTransfer: 'invalid_transfer',
+  ItemNotFound: 'item_not_found',
+  InvalidQuantity: 'invalid_quantity',
+  InventoryFull: 'inventory_full',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
@@ -61,6 +72,23 @@ export type CrewInput = z.infer<typeof crewInputSchema>;
 
 export const shipInputSchema = z.strictObject({ seq: sequence, thrust: axis, turn: axis });
 export type ShipInput = z.infer<typeof shipInputSchema>;
+
+/** Where a stack can be: the sender's backpack, the ship's hold or a container. */
+export const holderSchema = z.union([
+  z.literal('backpack'),
+  z.literal('cargo'),
+  z.string().regex(/^container\.[0-9]{1,3}$/),
+]);
+export type HolderRef = z.infer<typeof holderSchema>;
+
+/** Moves part or all of a stack. The server checks positions, ownership and room. */
+export const inventoryTransferSchema = z.strictObject({
+  item: z.string().min(1).max(64),
+  from: holderSchema,
+  to: holderSchema,
+  quantity: z.int().min(1).max(10_000),
+});
+export type InventoryTransfer = z.infer<typeof inventoryTransferSchema>;
 
 /** Messages without payload accept `undefined` or an empty object. */
 export const emptyPayloadSchema = z.union([z.undefined(), z.strictObject({})]);
@@ -88,6 +116,7 @@ function parser<T>(schema: z.ZodType<T>) {
 export const parseCrewInput = parser(crewInputSchema);
 export const parseShipInput = parser(shipInputSchema);
 export const parseEmptyPayload = parser(emptyPayloadSchema);
+export const parseInventoryTransfer = parser(inventoryTransferSchema);
 
 export function parseJoinOptions(raw: unknown): ParseResult<JoinOptions> {
   const result = joinOptionsSchema.safeParse(raw);

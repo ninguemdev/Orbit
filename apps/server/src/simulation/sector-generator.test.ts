@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  CONTAINER_LOOT,
   LARGEST_SHIP_RADIUS,
   OPEN_SECTOR,
   type SectorDefinition,
@@ -8,7 +9,13 @@ import {
   sectorSolids,
 } from '@orbit/catalog';
 import { type Circle, type Vec2, distance, sub, sweepCircle } from '@orbit/simulation';
-import { findRoutes, generateOpenSector, newSectorSeed, seededRandom } from './sector-generator';
+import {
+  findRoutes,
+  generateContainerLoot,
+  generateOpenSector,
+  newSectorSeed,
+  seededRandom,
+} from './sector-generator';
 
 const APPROACH = OPEN_SECTOR.containers.approachDistance;
 
@@ -108,6 +115,32 @@ describe('open sector generation', () => {
       });
     },
   );
+
+  it('fills every container from the seed, within the loot table', () => {
+    for (const seed of SEEDS.slice(0, 40)) {
+      const sector = generateOpenSector(seed);
+      const loot = generateContainerLoot(seed, sector.containers);
+      expect(generateContainerLoot(seed, sector.containers)).toEqual(loot);
+      expect([...loot.keys()]).toEqual(sector.containers.map((container) => container.id));
+      for (const contents of loot.values()) {
+        expect(contents.length).toBeGreaterThanOrEqual(CONTAINER_LOOT.stacks.min);
+        expect(contents.length).toBeLessThanOrEqual(CONTAINER_LOOT.stacks.max);
+        for (const stack of contents) {
+          const entry = CONTAINER_LOOT.table.find((candidate) => candidate.itemId === stack.itemId);
+          if (!entry) throw new Error(`item fora da tabela: ${stack.itemId}`);
+          expect(Number.isInteger(stack.quantity)).toBe(true);
+          expect(stack.quantity).toBeGreaterThanOrEqual(entry.min);
+          expect(stack.quantity).toBeLessThanOrEqual(entry.max);
+        }
+      }
+    }
+    // Different seeds give different contents.
+    const [first, second] = SEEDS as [string, string];
+    const containers = generateOpenSector(first).containers;
+    expect(generateContainerLoot(first, containers)).not.toEqual(
+      generateContainerLoot(second, containers),
+    );
+  });
 
   it('finds no route when asteroids close the spawn in', () => {
     // A ring of touching asteroids around the spawn.

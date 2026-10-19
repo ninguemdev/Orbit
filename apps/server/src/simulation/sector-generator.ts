@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
+  CONTAINER_LOOT,
+  type ItemId,
   LARGEST_SHIP_RADIUS,
   OPEN_SECTOR,
   type SectorDefinition,
@@ -143,6 +145,45 @@ function layOut(random: () => number): SectorDefinition | null {
     // Facing the center of the sector.
     shipSpawn: { position: spawn, angle: wrapAngle(spawnAngle + Math.PI) },
   };
+}
+
+export interface LootStack {
+  readonly itemId: ItemId;
+  readonly quantity: number;
+}
+
+/**
+ * What each container holds, from the seed's own loot stream (independent of the
+ * layout). Stays on the server: clients only see a container's contents once a crew
+ * member reaches it.
+ */
+export function generateContainerLoot(
+  seed: SectorSeed,
+  containers: readonly SectorFeature[],
+): Map<string, LootStack[]> {
+  const random = seededRandom(seed, 'loot');
+  const between = (min: number, max: number) => min + Math.floor(random() * (max - min + 1));
+  const { stacks, table } = CONTAINER_LOOT;
+  const totalWeight = table.reduce((sum, entry) => sum + entry.weight, 0);
+  const pick = () => {
+    let roll = random() * totalWeight;
+    for (const entry of table) {
+      roll -= entry.weight;
+      if (roll < 0) return entry;
+    }
+    return table[table.length - 1] as (typeof table)[number];
+  };
+  const loot = new Map<string, LootStack[]>();
+  for (const container of containers) {
+    const contents: LootStack[] = [];
+    const count = between(stacks.min, stacks.max);
+    for (let index = 0; index < count; index++) {
+      const entry = pick();
+      contents.push({ itemId: entry.itemId, quantity: between(entry.min, entry.max) });
+    }
+    loot.set(container.id, contents);
+  }
+  return loot;
 }
 
 export interface SectorRoutes {

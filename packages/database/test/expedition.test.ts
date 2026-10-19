@@ -451,6 +451,22 @@ describe('expedition start and reservations', () => {
       [alpha.accountId, bravo.accountId].sort(),
     );
     expect(roster?.members.every((member) => member.nick.startsWith('Exped_'))).toBe(true);
+    // The reserved loadout enters the match with its instance IDs and quantities.
+    const alphaRoster = roster?.members.find((member) => member.accountId === alpha.accountId);
+    expect(alphaRoster?.loadout).toEqual([
+      {
+        slot: 'sidearm',
+        instanceId: alpha.loadout[0]?.instanceId,
+        itemId: ItemId.Pistol,
+        quantity: 1,
+      },
+      {
+        slot: 'backpack.0',
+        instanceId: alpha.loadout[1]?.instanceId,
+        itemId: ItemId.Medkit,
+        quantity: 3,
+      },
+    ]);
 
     expect(await activateExpedition(t.db, started.expeditionId)).toBe('activated');
     expect(await activateExpedition(t.db, started.expeditionId)).toBe('not_preparing');

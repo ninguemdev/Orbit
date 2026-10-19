@@ -1,5 +1,6 @@
 import {
   CREW,
+  OPEN_SECTOR,
   SECTORS,
   SHIP_HULLS,
   SectorId,
@@ -155,6 +156,31 @@ export class SectorSimulation {
     member.movement.clear();
     // Nobody keeps the ship hostage while disconnected.
     if (!connected) this.releaseHelm(id);
+  }
+
+  /**
+   * Whether a crew member stands at the cargo hatch: connected, on foot and within its
+   * radius. Only the server's positions count.
+   */
+  isAtHatch(id: string): boolean {
+    const member = this.crew.get(id);
+    if (!member || !member.connected || member.atHelm) return false;
+    const hatch = this.ship.hull.cargoHatch;
+    return distance(member.position, hatch.position) <= hatch.interactRadius;
+  }
+
+  /**
+   * The container the hull is alongside, if any: within the approach distance that
+   * sector generation guarantees can be reached. Containers are far apart, so at most
+   * one is ever in reach.
+   */
+  containerInReach(): string | null {
+    const { position } = this.ship.kinematics;
+    const reach = this.ship.hull.handling.radius + OPEN_SECTOR.containers.approachDistance;
+    const container = this.sector.containers.find(
+      (candidate) => distance(position, candidate) - candidate.radius <= reach,
+    );
+    return container?.id ?? null;
   }
 
   /** Takes the helm when it is free and the member stands within reach of the seat. */

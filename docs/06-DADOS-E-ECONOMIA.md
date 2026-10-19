@@ -74,6 +74,8 @@ Loot, consumo, craft, roubo de piratas e transferências são fatos da simulaç�
 
 Equipamento levado preserva o ID original. Ao ser perdido em morte e recuperado como salvamento, preservar a proveniência e permitir novo destinatário elegível. Equipamento próprio guardado na carga conserva o dono enquanto ele for elegível; ao morrer/abandonar, o que a equipe recuperar pode virar salvamento comum. Essa conversão precisa ser explícita no relatório.
 
+Implementado na 0.3 (V03.04): `MissionInventory` guarda em memória cada pilha da partida, com ID (o ID da instância reservada para equipamento próprio, um ID temporário aleatório para loot), item, quantidade, dono (conta ou comum) e origem (`loadout` ou o contêiner). A sala carrega o snapshot do loadout de cada membro (`getExpeditionRoster` devolve `[{ slot, instanceId, itemId, quantity }]`) e o loot dos contêineres, sorteado de um fluxo da seed separado do layout. Mover é a única operação: tudo ou nada, sem cópia, com a soma de cada tipo (item, dono, origem) preservada.
+
 Uma carga roubada por pirata sai da nave do jogador e passa para a carga do pirata, sem cópia. Destruir o pirata permite recuperá-la com o mesmo ID/proveniência. Não alterar stash durante roubo, pois os itens ainda estão na expedição.
 
 ## Liquidação da extração
