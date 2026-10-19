@@ -18,6 +18,8 @@ import type {
   MissionTicket,
   MissionTicketStore,
 } from '../modules/mission/mission-directory';
+import { collectManifestItems } from '../modules/settlement/collect';
+import { type Manifest, buildManifest, manifestHash } from '../modules/settlement/manifest';
 import { MissionLoot } from '../simulation/mission-loot';
 import {
   type SectorSeed,
@@ -59,8 +61,10 @@ const lootId = () => `loot_${randomBytes(12).toString('base64url')}`;
  * naming this room; the expedition becomes ACTIVE when the whole roster has loaded
  * before the preparation deadline, otherwise the preparation is cancelled and the
  * room closes. Extraction, destruction and timeout (V03.05) decide when and why a
- * match ends, but until settlement exists (V03.07) every ending still closes the room
- * as a technical abort that returns the reserved items, never granting anything.
+ * match ends: a resolved outcome is settled for real (V03.06/V03.07), granting loot
+ * and destroying what was lost; any other end (someone leaves before a resolved
+ * outcome, the preparation itself gets cancelled) is still a technical abort that only
+ * returns the reserved items, granting nothing.
  */
 export class MissionRoom extends SectorRoom<MissionTicket> {
   /** Replaced by `defineMissionRoom`. */
@@ -81,6 +85,8 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   #loot: MissionLoot | null = null;
   /** The match reached a terminal outcome once; `#resolveMission` does not repeat. */
   #resolved = false;
+  /** Set by `#resolveMission`; `onDispose` settles it for real instead of aborting. */
+  #settlement: { readonly manifest: Manifest; readonly hash: string } | null = null;
   /** What each session could reach when its inventory view was last sent. */
   readonly #sentAccess = new Map<string, string>();
   /** Last view sent to each session, to skip sending one that did not change. */
@@ -197,9 +203,12 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     if (this.#ended || !this.#expeditionId) return;
     this.#ended = true;
     const expeditions = this.#deps.expeditions;
-    const ending = this.#activated
-      ? expeditions.abort(this.#expeditionId)
-      : expeditions.cancel(this.#expeditionId, 'room_closed');
+    const settlement = this.#settlement;
+    const ending = settlement
+      ? expeditions.settle(this.#expeditionId, settlement.manifest, settlement.hash)
+      : this.#activated
+        ? expeditions.abort(this.#expeditionId)
+        : expeditions.cancel(this.#expeditionId, 'room_closed');
     ending.catch((error: unknown) => {
       console.error(`[mission] não foi possível encerrar a expedição: ${errorName(error)}`);
     });
@@ -218,11 +227,12 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   }
 
   /**
-   * Extraction, destruction or timeout (docs/02-GAMEPLAY.md, V03.05): tells every
-   * client the outcome and who was aboard, then disconnects. Unlike `#close`, this
-   * leaves `#ended` untouched: the expedition is still ACTIVE in the database (the
-   * manifest and settlement that would resolve it for real are still V03.06/V03.07),
-   * so `onDispose` must still run its usual technical abort and return the reserves.
+   * Extraction, destruction or timeout (docs/02-GAMEPLAY.md, V03.05): builds the
+   * manifest from the live loot (V03.06), tells every client the outcome and who was
+   * aboard, then disconnects. Unlike `#close`, this leaves `#ended` untouched: the
+   * expedition is still ACTIVE in the database, so `onDispose` must still run and, now
+   * that `#settlement` is set, settles the manifest for real (V03.07) instead of the
+   * technical abort it falls back to for every other end of the room.
    */
   #resolveMission(): void {
     if (this.#resolved) return;
@@ -230,10 +240,21 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     // Not latched before this point: a call made too early must not block the real one.
     if (outcome === 'active') return;
     this.#resolved = true;
+    const roster = [...this.#roster.keys()];
     const aboardAccountIds = this.simulation
       .aboardCrewIds()
       .map((sessionId) => this.#accountOf(sessionId))
       .filter((accountId): accountId is string => accountId !== null);
+    if (this.#loot) {
+      const manifest = buildManifest({
+        expeditionId: this.#expeditionId,
+        outcome,
+        roster,
+        eligibleAccountIds: aboardAccountIds,
+        items: collectManifestItems(this.#loot.inventory, roster),
+      });
+      this.#settlement = { manifest, hash: manifestHash(manifest) };
+    }
     const payload: MissionOutcomePayload = { outcome, aboardAccountIds };
     for (const client of this.clients as MissionClient[]) {
       client.send(ServerMessage.MissionOutcome, payload);

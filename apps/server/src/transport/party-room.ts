@@ -613,7 +613,8 @@ export class PartyRoom
         if (reason !== 'party_changed') this.#preparationExpired(startedId);
       },
       onActivated: () => this.#missionStarted(startedId),
-      onAborted: () => this.#missionEnded(startedId),
+      onSettled: () => this.#missionEnded(startedId, 'settled'),
+      onAborted: () => this.#missionEnded(startedId, 'aborted'),
     };
     let started: Awaited<ReturnType<ExpeditionStarter['start']>>;
     try {
@@ -707,11 +708,11 @@ export class PartyRoom
     this.state.prepareSecondsLeft = 0;
   }
 
-  /** The match ended (technical abort until settlement exists); the items are back. */
-  #missionEnded(expeditionId: string): void {
+  /** The match ended: settled (extracted, destroyed or timed out) or a technical abort. */
+  #missionEnded(expeditionId: string, reason: 'settled' | 'aborted'): void {
     if (!expeditionId || this.state.expeditionId !== expeditionId) return;
     this.#clearExpedition();
-    this.#notifyExpeditionEnded('aborted');
+    this.#notifyExpeditionEnded(reason);
     this.#changed();
   }
 

@@ -413,6 +413,7 @@ describe('mission activation failure', () => {
             return service.activate(expeditionId);
           },
           abort: (expeditionId) => service.abort(expeditionId),
+          settle: (expeditionId, manifest, hash) => service.settle(expeditionId, manifest, hash),
         }),
       },
     );
@@ -466,13 +467,14 @@ describe('mission room extraction', () => {
     await api?.close();
   });
 
-  it('extracts once the helm operator counts down inside the zone, without granting anything yet', async () => {
+  it('extracts once the helm operator counts down inside the zone, settling the manifest for real', async () => {
     const { leader, guest, party: leaderParty, guestRoom, pistols } = await party.readyPair();
     const ended = party.messages<ExpeditionEndedNotice>(
       guestRoom,
       PartyServerMessage.ExpeditionEnded,
     );
     await party.confirm(leaderParty);
+    const expeditionId = leaderParty.state.expeditionId;
     const room = await mission.enterMission(leader);
     await mission.enterMission(guest);
     await waitFor(() => room.state.phase === RoomPhase.Active, 'partida ativa');
@@ -495,9 +497,31 @@ describe('mission room extraction', () => {
     expect([...(outcomes[0]?.aboardAccountIds ?? [])].sort()).toEqual([leader.id, guest.id].sort());
 
     await waitFor(() => ended.length === 1, 'aviso de encerramento');
-    expect(ended[0]).toEqual({ reason: 'aborted' });
+    expect(ended[0]).toEqual({ reason: 'settled' });
     expect(await getActiveExpedition(api.db, leader.id)).toBeNull();
+
+    // The expedition is really settled, not just technically aborted: closed, with a
+    // persisted settlement row, and both members' personal gear back and unreserved.
+    const state = await api.pool.query<{ state: string }>(
+      'SELECT state FROM expeditions WHERE id = $1',
+      [expeditionId],
+    );
+    expect(state.rows[0]?.state).toBe('CLOSED');
+    const settled = await api.pool.query<{ outcome: string }>(
+      'SELECT outcome FROM settlements WHERE expedition_id = $1',
+      [expeditionId],
+    );
+    expect(settled.rows[0]?.outcome).toBe('extracted');
+    const finalStates = await api.pool.query<{ account_id: string; final_state: string }>(
+      'SELECT account_id, final_state FROM expedition_members WHERE expedition_id = $1',
+      [expeditionId],
+    );
+    expect(
+      Object.fromEntries(finalStates.rows.map((row) => [row.account_id, row.final_state])),
+    ).toEqual({ [leader.id]: 'extracted', [guest.id]: 'extracted' });
+
     const stash = (await party.inventory(guest)).stash;
-    expect(stash.find((entry) => entry.instanceId === pistols.guest)?.reserved).toBe(false);
+    const guestPistol = stash.find((entry) => entry.instanceId === pistols.guest);
+    expect(guestPistol?.reserved).toBe(false);
   });
 });

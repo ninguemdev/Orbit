@@ -87,7 +87,11 @@ export interface MissionLifecycle extends ExpeditionStarter {
   /** Ends a running match returning the reserved items; retried until committed. */
   abort(expeditionId: string): Promise<boolean>;
   /** Persists one extraction's manifest; retried until committed. */
-  settle(expeditionId: string, manifest: SettlementManifest, manifestHash: string): Promise<boolean>;
+  settle(
+    expeditionId: string,
+    manifest: SettlementManifest,
+    manifestHash: string,
+  ): Promise<boolean>;
 }
 
 const REFUSAL: Readonly<Record<StartExpeditionRefusal | 'expedition_ended', PartyErrorCode>> = {

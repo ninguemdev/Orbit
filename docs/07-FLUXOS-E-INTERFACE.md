@@ -34,7 +34,7 @@ Na 0.3 (V03.04), o painel **Inventário da missão** fica à esquerda da tela, a
 - **Atualização:** clicar só envia o pedido; a lista muda quando chega a nova visão do servidor.
 - **Recusas:** aparecem no HUD (fora da eclusa, contêiner longe, item já pego, sem espaço).
 
-Na 0.3 (V03.05), o HUD mostra o casco da nave (pontos atuais/máximos) e, só para quem está no comando, o botão **Iniciar evacuação**, habilitado apenas com a nave dentro da zona de extração e devagar; o próprio minimapa já mostra a zona. Enquanto a evacuação conta, o botão dá lugar à contagem em segundos recebida do servidor. Ao extrair, a nave ser destruída ou o prazo da missão esgotar, a tela volta ao menu com um aviso explicando o motivo; manifesto e liquidação (V03.06/V03.07) ainda não existem.
+Na 0.3 (V03.05), o HUD mostra o casco da nave (pontos atuais/máximos) e, só para quem está no comando, o botão **Iniciar evacuação**, habilitado apenas com a nave dentro da zona de extração e devagar; o próprio minimapa já mostra a zona. Enquanto a evacuação conta, o botão dá lugar à contagem em segundos recebida do servidor. Ao extrair, a nave ser destruída ou o prazo da missão esgotar, o servidor liquida a expedição de verdade (V03.06/V03.07) e a tela volta ao menu com um aviso da party explicando o motivo (“a missão terminou”, sem detalhar ainda o que cada um recebeu ou perdeu — a tela de resultado chega na V03.09).
 
 Ao interagir com console, câmera e controles mudam de modo. É possível sair do console e caminhar de novo. Ter indicação visível do operador evita disputa silenciosa. Teclas de ação contextual mostram o alvo e a duração antes de começar.
 
