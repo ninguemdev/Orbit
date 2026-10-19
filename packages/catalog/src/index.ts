@@ -171,7 +171,7 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
       { minX: -140, minY: 42, maxX: -108, maxY: 70 },
     ],
     helm: { id: 'console.helm', seat: { x: 120, y: 0 }, interactRadius: 34, body: SCOUT_HELM_BODY },
-    cargoHatch: { id: 'hatch.cargo', position: { x: -125, y: 0 }, interactRadius: 30 },
+    cargoHatch: { id: 'hatch.cargo', position: { x: -125, y: 0 }, interactRadius: 40 },
     cargoSlots: 24,
     crewSpawns: [
       { x: -40, y: -30 },
@@ -217,7 +217,7 @@ export const SHIP_HULLS: Readonly<Record<ShipHullId, ShipHullDefinition>> = {
       interactRadius: 34,
       body: HAULER_HELM_BODY,
     },
-    cargoHatch: { id: 'hatch.cargo', position: { x: -155, y: 0 }, interactRadius: 30 },
+    cargoHatch: { id: 'hatch.cargo', position: { x: -155, y: 0 }, interactRadius: 40 },
     cargoSlots: 40,
     crewSpawns: [
       { x: -20, y: -30 },

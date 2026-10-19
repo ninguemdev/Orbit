@@ -9,6 +9,7 @@ import { installDebugHook } from '../network/debug-hook';
 import { SectorConnection, defaultServerEndpoint } from '../network/sector-connection';
 import { AccessScreen } from './AccessScreen';
 import { GameView } from './GameView';
+import { MissionInventoryPanel } from './MissionInventoryPanel';
 import { Hud } from './Hud';
 import { PreparationPanels } from './InventoryPanel';
 import { MissionSetupPanel } from './MissionSetupPanel';
@@ -259,7 +260,9 @@ export function App() {
             onToggleEconomy={toggleEconomy}
             onLeave={leave}
             leaveLabel={screen.mission ? 'Sair da missão' : 'Sair'}
+            mission={screen.mission}
           />
+          {screen.mission ? <MissionInventoryPanel bridge={screen.connection} /> : null}
         </>
       );
     }
