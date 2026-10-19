@@ -245,16 +245,17 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
       .aboardCrewIds()
       .map((sessionId) => this.#accountOf(sessionId))
       .filter((accountId): accountId is string => accountId !== null);
-    if (this.#loot) {
-      const manifest = buildManifest({
-        expeditionId: this.#expeditionId,
-        outcome,
-        roster,
-        eligibleAccountIds: aboardAccountIds,
-        items: collectManifestItems(this.#loot.inventory, roster),
-      });
-      this.#settlement = { manifest, hash: manifestHash(manifest) };
-    }
+    // Set once in onCreate, before the match can ever reach a resolved outcome: null
+    // here would silently fall back to a technical abort, discarding real loot.
+    if (!this.#loot) throw new Error('Missão resolvida sem inventário carregado');
+    const manifest = buildManifest({
+      expeditionId: this.#expeditionId,
+      outcome,
+      roster,
+      eligibleAccountIds: aboardAccountIds,
+      items: collectManifestItems(this.#loot.inventory, roster),
+    });
+    this.#settlement = { manifest, hash: manifestHash(manifest) };
     const payload: MissionOutcomePayload = { outcome, aboardAccountIds };
     for (const client of this.clients as MissionClient[]) {
       client.send(ServerMessage.MissionOutcome, payload);
