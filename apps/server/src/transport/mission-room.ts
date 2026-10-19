@@ -226,9 +226,10 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
    */
   #resolveMission(): void {
     if (this.#resolved) return;
-    this.#resolved = true;
     const outcome = this.simulation.outcome;
+    // Not latched before this point: a call made too early must not block the real one.
     if (outcome === 'active') return;
+    this.#resolved = true;
     const aboardAccountIds = this.simulation
       .aboardCrewIds()
       .map((sessionId) => this.#accountOf(sessionId))

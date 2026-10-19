@@ -256,10 +256,14 @@ export class SectorSimulation {
   /**
    * Starts the evacuation countdown from the helm, once the hull is inside the
    * extraction zone and slow enough. Repeating the request while already counting is
-   * a no-op success; leaving the zone or speeding up cancels it in `step`.
+   * a no-op success; leaving the zone or speeding up cancels it in `step`. Only `step`
+   * ever advances or cancels the countdown, and it only does so under mission rules, so
+   * a sector without them (the test room) must never be allowed to start one.
    */
   requestExtraction(id: string, nowMs: number): ExtractionResult {
-    if (this.outcome !== 'active') return { ok: false, code: ErrorCode.MatchNotActive };
+    if (!this.missionRules || this.outcome !== 'active') {
+      return { ok: false, code: ErrorCode.MatchNotActive };
+    }
     if (this.ship.operatorId !== id) return { ok: false, code: ErrorCode.NotHelmOperator };
     if (this.evacuation.counting) return { ok: true };
     if (!this.isInExtractionZone()) return { ok: false, code: ErrorCode.NotInExtractionZone };
