@@ -336,6 +336,35 @@ export async function startExpedition(
 
 export type CancelPreparationResult = 'cancelled' | 'not_preparing' | 'not_found';
 
+export interface LockedExpedition {
+  readonly accountIds: readonly string[];
+  readonly state: ExpeditionState;
+}
+
+/**
+ * Locks every member account, then the expedition row (FOR UPDATE) — the same order as
+ * `startExpedition`, so nothing started, aborted or settled concurrently can deadlock.
+ * Null when the expedition does not exist.
+ */
+export async function lockExpeditionAndMembers(
+  tx: Executor,
+  expeditionId: string,
+): Promise<LockedExpedition | null> {
+  const members = await tx
+    .select({ accountId: expeditionMembers.accountId })
+    .from(expeditionMembers)
+    .where(eq(expeditionMembers.expeditionId, expeditionId));
+  const accountIds = members.map((member) => member.accountId);
+  await lockAccounts(tx, accountIds);
+  const rows = await tx.execute<{ state: string }>(
+    sql`SELECT ${expeditions.state} AS state FROM ${expeditions}
+        WHERE ${expeditions.id} = ${expeditionId} FOR UPDATE`,
+  );
+  const state = rows.rows[0]?.state;
+  if (state === undefined) return null;
+  return { accountIds, state: state as ExpeditionState };
+}
+
 /**
  * Ends an expedition in `from` as `to`, returning every reservation and ending the
  * members' participations in one transaction. Nothing is granted or consumed: the
@@ -349,22 +378,9 @@ async function endReturningItems(
 ): Promise<{ readonly ended: boolean } | null> {
   if (!UUID.test(expeditionId)) return null;
   return db.transaction(async (tx) => {
-    const members = await tx
-      .select({ accountId: expeditionMembers.accountId })
-      .from(expeditionMembers)
-      .where(eq(expeditionMembers.expeditionId, expeditionId));
-    // Same order as startExpedition: accounts first, then the expedition.
-    await lockAccounts(
-      tx,
-      members.map((member) => member.accountId),
-    );
-    const rows = await tx.execute<{ state: string }>(
-      sql`SELECT ${expeditions.state} AS state FROM ${expeditions}
-          WHERE ${expeditions.id} = ${expeditionId} FOR UPDATE`,
-    );
-    const state = rows.rows[0]?.state;
-    if (state === undefined) return null;
-    if (!(from as readonly string[]).includes(state)) return { ended: false };
+    const locked = await lockExpeditionAndMembers(tx, expeditionId);
+    if (!locked) return null;
+    if (!(from as readonly string[]).includes(locked.state)) return { ended: false };
 
     await tx.delete(itemReservations).where(eq(itemReservations.expeditionId, expeditionId));
     await tx

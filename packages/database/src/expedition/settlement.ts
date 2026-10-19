@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../client';
-import { type Executor, grantItem, lockAccounts } from '../inventory/inventory';
+import { lockExpeditionAndMembers } from './expeditions';
+import { type Executor, MAX_GRANT_QUANTITY, grantItem } from '../inventory/inventory';
 import {
   type ExpeditionState,
   expeditionMembers,
@@ -44,12 +45,6 @@ export interface SettlementManifest {
 export type SettleExpeditionResult =
   { readonly ok: true } | { readonly ok: false; readonly reason: 'not_found' | 'not_running' };
 
-const FINAL_STATE: Readonly<Record<SettlementManifest['outcome'], string>> = {
-  extracted: 'extracted',
-  destroyed: 'destroyed',
-  timeout: 'timeout',
-};
-
 /**
  * Persists one extraction (docs/06-DADOS-E-ECONOMIA.md, V03.07): grants the new loot,
  * destroys what personal gear was lost, releases every reservation, records each
@@ -64,20 +59,8 @@ export async function settleExpedition(
   manifestHash: string,
 ): Promise<SettleExpeditionResult> {
   return db.transaction(async (tx) => {
-    const members = await tx
-      .select({ accountId: expeditionMembers.accountId })
-      .from(expeditionMembers)
-      .where(eq(expeditionMembers.expeditionId, manifest.expeditionId));
-    if (members.length === 0) return { ok: false, reason: 'not_found' };
-    // Same lock order as every other inventory change: accounts, then the expedition.
-    await lockAccounts(tx, members.map((member) => member.accountId).sort());
-
-    const rows = await tx.execute<{ state: string }>(
-      sql`SELECT ${expeditions.state} AS state FROM ${expeditions}
-          WHERE ${expeditions.id} = ${manifest.expeditionId} FOR UPDATE`,
-    );
-    const state = rows.rows[0]?.state;
-    if (state === undefined) return { ok: false, reason: 'not_found' };
+    const locked = await lockExpeditionAndMembers(tx, manifest.expeditionId);
+    if (!locked) return { ok: false, reason: 'not_found' };
 
     const [already] = await tx
       .select({ manifestHash: settlements.manifestHash })
@@ -91,7 +74,7 @@ export async function settleExpedition(
       }
       return { ok: true };
     }
-    if (!(['ACTIVE', 'EXTRACTING'] as readonly string[]).includes(state)) {
+    if (!(['ACTIVE', 'EXTRACTING'] as readonly string[]).includes(locked.state)) {
       return { ok: false, reason: 'not_running' };
     }
 
@@ -112,13 +95,20 @@ export async function settleExpedition(
       // Personal gear kept by its own owner is already the real stash item: nothing to
       // grant, only its reservation (already released above) stood in the way.
       if (destination.origin === 'loadout') continue;
-      await grantAsExecutor(tx, {
-        accountId: destination.accountId,
-        itemId: destination.itemId,
-        quantity: destination.quantity,
-        origin: `expedition:${manifest.expeditionId}`,
-        reason: 'expedition_loot',
-      });
+      // grantItem caps a single call at MAX_GRANT_QUANTITY; a larger stack is granted
+      // in several calls so an oversized manifest quantity never gets this stuck.
+      let remaining = destination.quantity;
+      while (remaining > 0) {
+        const quantity = Math.min(remaining, MAX_GRANT_QUANTITY);
+        await grantAsExecutor(tx, {
+          accountId: destination.accountId,
+          itemId: destination.itemId,
+          quantity,
+          origin: `expedition:${manifest.expeditionId}`,
+          reason: 'expedition_loot',
+        });
+        remaining -= quantity;
+      }
     }
 
     await tx
@@ -126,13 +116,11 @@ export async function settleExpedition(
       .where(eq(activeParticipations.expeditionId, manifest.expeditionId));
     await tx
       .update(expeditionMembers)
-      .set({ finalState: FINAL_STATE[manifest.outcome] })
+      .set({ finalState: manifest.outcome })
       .where(eq(expeditionMembers.expeditionId, manifest.expeditionId));
     if (manifest.outcome === 'extracted') {
       const eligible = new Set(manifest.eligibleAccountIds);
-      const notEligible = members
-        .map((member) => member.accountId)
-        .filter((accountId) => !eligible.has(accountId));
+      const notEligible = locked.accountIds.filter((accountId) => !eligible.has(accountId));
       if (notEligible.length > 0) {
         await tx
           .update(expeditionMembers)

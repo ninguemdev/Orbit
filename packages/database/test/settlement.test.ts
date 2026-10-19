@@ -9,7 +9,7 @@ import {
 import { type SettlementManifest, settleExpedition } from '../src/expedition/settlement';
 import { createAccount } from '../src/identity/accounts';
 import { updateProfileClass } from '../src/identity/sessions';
-import { getInventory, grantItem } from '../src/inventory/inventory';
+import { MAX_GRANT_QUANTITY, getInventory, grantItem } from '../src/inventory/inventory';
 import { type LoadoutPick, setLoadout } from '../src/inventory/loadout';
 import { FAKE_ARGON2ID_HASH, type TestDatabase, createTestDatabase } from './test-database';
 
@@ -150,6 +150,40 @@ describe('settleExpedition', () => {
     );
     expect(oreA?.quantity).toBe(3);
     expect(oreB?.quantity).toBe(2);
+  });
+
+  it('grants a destination quantity above the single-grant cap in several calls, never getting stuck', async () => {
+    const a = await newPlayer();
+    const expeditionId = await activeExpedition([a]);
+    const huge = MAX_GRANT_QUANTITY + 1;
+    const manifest: SettlementManifest = {
+      expeditionId,
+      outcome: 'extracted',
+      eligibleAccountIds: [a.accountId],
+      destinations: [
+        {
+          sourceId: 'loot_1',
+          accountId: a.accountId,
+          itemId: ItemId.Ore,
+          quantity: huge,
+          origin: 'container.1',
+        },
+      ],
+      losses: [],
+    };
+
+    expect(await settleExpedition(t.db, manifest, hashOf('huge-stack'))).toEqual({ ok: true });
+    const inventory = await getInventory(t.db, a.accountId);
+    // The stash (40 slots × 50/stack, minus the pistol's own slot) cannot hold it all;
+    // nothing is lost, the rest overflows to the inbox like any other oversized grant.
+    const total =
+      inventory.stash
+        .filter((entry) => entry.itemId === ItemId.Ore)
+        .reduce((sum, entry) => sum + entry.quantity, 0) +
+      inventory.inbox
+        .filter((entry) => entry.itemId === ItemId.Ore)
+        .reduce((sum, entry) => sum + entry.quantity, 0);
+    expect(total).toBe(huge);
   });
 
   it('destroys the personal gear of a member who was not eligible, without handing it to anyone else', async () => {
