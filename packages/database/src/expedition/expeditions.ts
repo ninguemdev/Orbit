@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   CATALOG_VERSION,
   type ClassId,
@@ -22,6 +22,7 @@ import {
   itemReservations,
   loadoutItems,
   profiles,
+  settlements,
   shipUnlocks,
 } from '../schema';
 
@@ -615,4 +616,103 @@ function reservedItems(snapshot: unknown): ReservedItem[] {
     }
     return { slot, instanceId, itemId, quantity };
   });
+}
+
+export interface MissionResultItem {
+  readonly itemId: string;
+  readonly quantity: number;
+}
+
+/**
+ * `extracted`/`destroyed`/`timeout`: a real settlement exists, with this account's own
+ * share. `aborted`/`cancelled`: a technical ending, nothing lost or gained beyond what
+ * was already reserved (V03.08), so there is nothing to list.
+ */
+export interface MissionResult {
+  readonly expeditionId: string;
+  readonly outcome: 'extracted' | 'destroyed' | 'timeout' | 'aborted' | 'cancelled';
+  readonly endedAt: Date;
+  /** Own gear that came back. */
+  readonly returned: readonly MissionResultItem[];
+  /** Common loot granted. */
+  readonly received: readonly MissionResultItem[];
+  readonly lost: readonly MissionResultItem[];
+}
+
+const TECHNICAL_OUTCOME: Readonly<Partial<Record<ExpeditionState, 'aborted' | 'cancelled'>>> = {
+  ABORTED_TECHNICAL: 'aborted',
+  CANCELLED: 'cancelled',
+};
+
+/** Reads one account's own share out of a stored settlement manifest (V03.06/V03.07). */
+function ownShare(
+  manifest: unknown,
+  accountId: string,
+): Pick<MissionResult, 'returned' | 'received' | 'lost'> {
+  const { outcome, destinations, losses } = (manifest ?? {}) as Record<string, unknown>;
+  if (
+    (outcome !== 'extracted' && outcome !== 'destroyed' && outcome !== 'timeout') ||
+    !Array.isArray(destinations) ||
+    !Array.isArray(losses)
+  ) {
+    throw new Error('Manifesto de liquidação inválido');
+  }
+  const items = (
+    list: readonly unknown[],
+    matches: (entry: Record<string, unknown>) => boolean,
+  ): MissionResultItem[] =>
+    list
+      .map((entry) => entry as Record<string, unknown>)
+      .filter(matches)
+      .map((entry) => ({ itemId: String(entry['itemId']), quantity: Number(entry['quantity']) }));
+  return {
+    returned: items(destinations, (d) => d['accountId'] === accountId && d['origin'] === 'loadout'),
+    received: items(destinations, (d) => d['accountId'] === accountId && d['origin'] !== 'loadout'),
+    lost: items(losses, (l) => l['accountId'] === accountId),
+  };
+}
+
+/**
+ * The most recent expedition this account took part in that has already ended, with
+ * its own share of the outcome. Null before the account has ever finished one.
+ */
+export async function getLastMissionResult(
+  db: Database,
+  accountId: string,
+): Promise<MissionResult | null> {
+  const [row] = await db
+    .select({
+      expeditionId: expeditions.id,
+      state: expeditions.state,
+      endedAt: expeditions.endedAt,
+      manifest: settlements.manifest,
+    })
+    .from(expeditionMembers)
+    .innerJoin(expeditions, eq(expeditions.id, expeditionMembers.expeditionId))
+    .leftJoin(settlements, eq(settlements.expeditionId, expeditions.id))
+    .where(
+      and(
+        eq(expeditionMembers.accountId, accountId),
+        inArray(expeditions.state, TERMINAL_EXPEDITION_STATES),
+      ),
+    )
+    .orderBy(desc(expeditions.endedAt))
+    .limit(1);
+  if (!row?.endedAt) return null;
+  if (row.manifest) {
+    const share = ownShare(row.manifest, accountId);
+    const outcome = (row.manifest as { outcome: MissionResult['outcome'] }).outcome;
+    return { expeditionId: row.expeditionId, outcome, endedAt: row.endedAt, ...share };
+  }
+  const outcome = TECHNICAL_OUTCOME[row.state as ExpeditionState];
+  if (!outcome)
+    throw new Error(`Expedição terminal sem liquidação nem aborto: ${row.expeditionId}`);
+  return {
+    expeditionId: row.expeditionId,
+    outcome,
+    endedAt: row.endedAt,
+    returned: [],
+    received: [],
+    lost: [],
+  };
 }

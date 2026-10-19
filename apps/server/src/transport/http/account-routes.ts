@@ -4,6 +4,7 @@ import {
   type AccountErrorBody,
   AccountRoute,
   MissionRoute,
+  type MissionResultResponse,
   type MissionTicketResponse,
   PartyRoute,
   type RecoveryCodeResponse,
@@ -21,6 +22,7 @@ import {
   type Database,
   getActiveExpedition,
   getInventory,
+  getLastMissionResult,
   getShipLicenses,
   moveStashItem,
   postgresError,
@@ -236,6 +238,16 @@ export function createAccountApi(options: AccountApiOptions): express.Router {
         if (moved === 'empty_slot') return fail(response, AccountErrorCode.EmptySlot);
         if (moved === 'invalid_slot') return fail(response, AccountErrorCode.InvalidSlot);
         response.status(204).end();
+      }),
+    );
+    router.get(
+      AccountRoute.MyMissionResult,
+      withSession(async (_request, response, session) => {
+        const result = await getLastMissionResult(db, session.accountId);
+        const body: MissionResultResponse = {
+          result: result && { ...result, endedAt: result.endedAt.toISOString() },
+        };
+        response.json(body);
       }),
     );
   }

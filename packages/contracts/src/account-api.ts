@@ -14,6 +14,7 @@ export const AccountRoute = {
   MyStashMove: '/api/me/stash/move',
   /** GET reads, PUT replaces the whole loadout. */
   MyLoadout: '/api/me/loadout',
+  MyMissionResult: '/api/me/mission-result',
   Recovery: '/api/recovery',
 } as const;
 
@@ -115,6 +116,31 @@ export interface InventoryResponse {
     readonly reason: string;
   }[];
   readonly ships: readonly { readonly shipId: string }[];
+}
+
+/** One item stack, as shown in a mission result. */
+export interface MissionResultItemView {
+  readonly itemId: string;
+  readonly quantity: number;
+}
+
+/**
+ * The most recent mission this account finished, with its own share. `extracted` /
+ * `destroyed` / `timeout` come from a real settlement (V03.06/V03.07); `aborted` /
+ * `cancelled` are a technical ending, with nothing lost or gained to list.
+ */
+export interface MissionResultView {
+  readonly expeditionId: string;
+  readonly outcome: 'extracted' | 'destroyed' | 'timeout' | 'aborted' | 'cancelled';
+  readonly endedAt: string;
+  readonly returned: readonly MissionResultItemView[];
+  readonly received: readonly MissionResultItemView[];
+  readonly lost: readonly MissionResultItemView[];
+}
+
+/** Null before the account has ever finished a mission. */
+export interface MissionResultResponse {
+  readonly result: MissionResultView | null;
 }
 
 export const recoverySchema = z.strictObject({
