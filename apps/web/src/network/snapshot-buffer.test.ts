@@ -7,10 +7,23 @@ function snapshot(tick: number, receivedAt: number, x: number, angle = 0): World
     tick,
     receivedAt,
     phase: 'ACTIVE',
-    ship: { hullId: 'ship.scout', x, y: 0, angle, operatorId: '' },
+    ship: {
+      hullId: 'ship.scout',
+      x,
+      y: 0,
+      angle,
+      vx: 0,
+      vy: 0,
+      operatorId: '',
+      hullPoints: 100,
+      maxHullPoints: 100,
+    },
     crew: new Map([
       ['a', { id: 'a', name: 'Alfa', colorIndex: 0, x, y: 0, atHelm: false, connected: true }],
     ]),
+    missionOutcome: 'active',
+    evacuationCounting: false,
+    evacuationSecondsLeft: 0,
   };
 }
 

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { EXTRACTION, SHIP_HULLS, isShipHullId } from '@orbit/catalog';
+import { distance } from '@orbit/simulation';
 import type { SectorBridge } from '../network/sector-connection';
 
 const HUD_REFRESH_MS = 200;
@@ -17,6 +19,8 @@ const NOTICE_TEXT: Record<string, string> = {
   invalid_quantity: 'A pilha mudou; tente de novo.',
   inventory_full: 'Sem espaço para tudo isso.',
   not_item_owner: 'Só o dono move o próprio equipamento.',
+  not_in_extraction_zone: 'Leve a nave até a zona de extração (minimapa).',
+  extraction_speed_too_high: 'Reduza a velocidade da nave para extrair.',
 };
 
 interface HudState {
@@ -31,9 +35,19 @@ interface HudState {
   }[];
   readonly operator: string | null;
   readonly notice: string | null;
+  /** Basic extraction (docs/02-GAMEPLAY.md, V03.05); null outside a mission. */
+  readonly extraction: {
+    readonly hullPoints: number;
+    readonly maxHullPoints: number;
+    readonly isOperator: boolean;
+    readonly inZone: boolean;
+    readonly underSpeed: boolean;
+    readonly counting: boolean;
+    readonly secondsLeft: number;
+  } | null;
 }
 
-function readHud(bridge: SectorBridge): HudState {
+function readHud(bridge: SectorBridge, mission: boolean): HudState {
   const snapshot = bridge.latest();
   const crew = snapshot
     ? [...snapshot.crew.values()].map((member) => ({
@@ -51,7 +65,32 @@ function readHud(bridge: SectorBridge): HudState {
     notice && performance.now() - notice.at < NOTICE_VISIBLE_MS
       ? (NOTICE_TEXT[notice.code] ?? 'Ação recusada.')
       : null;
-  return { status: bridge.status, ping: bridge.pingMs, crew, operator, notice: noticeText };
+  const extraction =
+    mission && snapshot && isShipHullId(snapshot.ship.hullId)
+      ? (() => {
+          const hull = SHIP_HULLS[snapshot.ship.hullId];
+          const zone = bridge.layout()?.extractionZones[0] ?? null;
+          const ship = { x: snapshot.ship.x, y: snapshot.ship.y };
+          const speed = Math.hypot(snapshot.ship.vx, snapshot.ship.vy);
+          return {
+            hullPoints: snapshot.ship.hullPoints,
+            maxHullPoints: snapshot.ship.maxHullPoints,
+            isOperator: operatorId === bridge.sessionId,
+            inZone: zone !== null && distance(ship, zone) <= zone.radius - hull.handling.radius,
+            underSpeed: speed <= hull.handling.maxSpeed * EXTRACTION.maxSpeedFraction,
+            counting: snapshot.evacuationCounting,
+            secondsLeft: snapshot.evacuationSecondsLeft,
+          };
+        })()
+      : null;
+  return {
+    status: bridge.status,
+    ping: bridge.pingMs,
+    crew,
+    operator,
+    notice: noticeText,
+    extraction,
+  };
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -79,12 +118,12 @@ export function Hud({
   leaveLabel = 'Sair',
   mission = false,
 }: HudProps) {
-  const [hud, setHud] = useState(() => readHud(bridge));
+  const [hud, setHud] = useState(() => readHud(bridge, mission));
 
   useEffect(() => {
-    const timer = setInterval(() => setHud(readHud(bridge)), HUD_REFRESH_MS);
+    const timer = setInterval(() => setHud(readHud(bridge, mission)), HUD_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [bridge]);
+  }, [bridge, mission]);
 
   return (
     <aside className="hud" data-testid="hud">
@@ -108,9 +147,29 @@ export function Hud({
           {hud.notice}
         </p>
       ) : null}
+      {hud.extraction ? (
+        <div className="extraction" data-testid="extraction">
+          <p data-testid="hull-points">
+            Casco: {Math.ceil(hud.extraction.hullPoints)}/{hud.extraction.maxHullPoints}
+          </p>
+          {hud.extraction.counting ? (
+            <p data-testid="evacuation-countdown">Evacuando: {hud.extraction.secondsLeft} s</p>
+          ) : hud.extraction.isOperator ? (
+            <button
+              type="button"
+              data-testid="request-extraction"
+              disabled={!hud.extraction.inZone || !hud.extraction.underSpeed}
+              onClick={() => bridge.requestExtraction()}
+            >
+              Iniciar evacuação
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <p className="controls">
         WASD mover · E assumir/sair do comando · No comando: W/S acelerar/frear, A/D girar · Esc
-        sair do comando{mission ? ' · Eclusa (popa): porão e contêineres' : ''}
+        sair do comando
+        {mission ? ' · Eclusa (popa): porão e contêineres · Zona de extração: minimapa' : ''}
       </p>
       <div className="hud-actions">
         <label>
