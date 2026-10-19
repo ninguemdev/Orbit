@@ -25,6 +25,8 @@ export const ClientMessage = {
   HelmRelease: 'helm.release',
   /** Mission rooms: move a stack between the container, the backpack and the hold. */
   InventoryTransfer: 'inventory.transfer',
+  /** Mission rooms: the helm operator starts the evacuation countdown. */
+  RequestExtraction: 'extraction.request',
 } as const;
 export type ClientMessage = (typeof ClientMessage)[keyof typeof ClientMessage];
 
@@ -33,6 +35,8 @@ export const ServerMessage = {
   ActionRejected: 'action.rejected',
   /** Mission rooms: the receiver's own view of the items it can see (MissionInventoryView). */
   Inventory: 'mission.inventory',
+  /** Mission rooms: the match just ended with this outcome, right before the room closes. */
+  MissionOutcome: 'mission.outcome',
 } as const;
 
 export const ErrorCode = {
@@ -52,6 +56,8 @@ export const ErrorCode = {
   InvalidQuantity: 'invalid_quantity',
   InventoryFull: 'inventory_full',
   NotItemOwner: 'not_item_owner',
+  NotInExtractionZone: 'not_in_extraction_zone',
+  ExtractionSpeedTooHigh: 'extraction_speed_too_high',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

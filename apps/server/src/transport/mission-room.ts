@@ -6,6 +6,7 @@ import {
   ErrorCode,
   MISSION_CANCELLED_CLOSE_CODE,
   MISSION_ENDED_CLOSE_CODE,
+  type MissionOutcomePayload,
   RoomPhase,
   ServerMessage,
   parseInventoryTransfer,
@@ -57,8 +58,9 @@ const lootId = () => `loot_${randomBytes(12).toString('base64url')}`;
  * The match of one expedition. Only its members enter, each with a single-use ticket
  * naming this room; the expedition becomes ACTIVE when the whole roster has loaded
  * before the preparation deadline, otherwise the preparation is cancelled and the
- * room closes. Until extraction and settlement exist (V03.05, V03.07), a match ends
- * when the room closes, as a technical abort that returns the reserved items.
+ * room closes. Extraction, destruction and timeout (V03.05) decide when and why a
+ * match ends, but until settlement exists (V03.07) every ending still closes the room
+ * as a technical abort that returns the reserved items, never granting anything.
  */
 export class MissionRoom extends SectorRoom<MissionTicket> {
   /** Replaced by `defineMissionRoom`. */
@@ -77,6 +79,8 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   #ready = false;
   #closing = false;
   #loot: MissionLoot | null = null;
+  /** The match reached a terminal outcome once; `#resolveMission` does not repeat. */
+  #resolved = false;
   /** What each session could reach when its inventory view was last sent. */
   readonly #sentAccess = new Map<string, string>();
   /** Last view sent to each session, to skip sending one that did not change. */
@@ -121,7 +125,7 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     // The seed stays in this process: clients receive only the resulting geometry.
     const seed = (this.#deps.sectorSeed ?? newSectorSeed)();
     const sector = (this.#deps.generateSector ?? generateOpenSector)(seed);
-    this.startSector(new SectorSimulation(sector, roster.shipId));
+    this.startSector(new SectorSimulation(sector, roster.shipId, true));
     this.#loot = new MissionLoot({
       simulation: this.simulation,
       members: roster.members,
@@ -203,6 +207,7 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
 
   /** Walking to or away from the hatch, or the hull reaching a container, updates the view. */
   protected override afterStep(): void {
+    if (this.#activated && this.simulation.outcome !== 'active') this.#resolveMission();
     const loot = this.#loot;
     if (!loot) return;
     for (const client of this.clients as MissionClient[]) {
@@ -210,6 +215,39 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
         this.#sendInventory(client);
       }
     }
+  }
+
+  /**
+   * Extraction, destruction or timeout (docs/02-GAMEPLAY.md, V03.05): tells every
+   * client the outcome and who was aboard, then disconnects. Unlike `#close`, this
+   * leaves `#ended` untouched: the expedition is still ACTIVE in the database (the
+   * manifest and settlement that would resolve it for real are still V03.06/V03.07),
+   * so `onDispose` must still run its usual technical abort and return the reserves.
+   */
+  #resolveMission(): void {
+    if (this.#resolved) return;
+    const outcome = this.simulation.outcome;
+    // Not latched before this point: a call made too early must not block the real one.
+    if (outcome === 'active') return;
+    this.#resolved = true;
+    const aboardAccountIds = this.simulation
+      .aboardCrewIds()
+      .map((sessionId) => this.#accountOf(sessionId))
+      .filter((accountId): accountId is string => accountId !== null);
+    const payload: MissionOutcomePayload = { outcome, aboardAccountIds };
+    for (const client of this.clients as MissionClient[]) {
+      client.send(ServerMessage.MissionOutcome, payload);
+    }
+    if (this.#closing) return;
+    this.#closing = true;
+    void this.disconnect(MISSION_ENDED_CLOSE_CODE);
+  }
+
+  #accountOf(sessionId: string): string | null {
+    for (const [accountId, seatSessionId] of this.#seats) {
+      if (seatSessionId === sessionId) return accountId;
+    }
+    return null;
   }
 
   #transfer(client: MissionClient, raw: unknown): void {

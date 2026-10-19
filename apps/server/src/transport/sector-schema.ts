@@ -25,6 +25,8 @@ export const ShipState = schema(
     vx: t.float32().default(0),
     vy: t.float32().default(0),
     operatorId: t.string().default(''),
+    hullPoints: t.float32().default(0),
+    maxHullPoints: t.float32().default(0),
   },
   'Ship',
 );
@@ -76,6 +78,11 @@ export const SectorState = schema(
     layout: SectorLayoutState,
     ship: ShipState,
     crew: t.map(CrewMemberState),
+    /** 'active' | 'extracted' | 'destroyed' | 'timeout'; only set with extraction rules. */
+    missionOutcome: t.string().default('active'),
+    evacuationCounting: t.boolean().default(false),
+    /** Ceiling of the time left, counted on the server's clock; 0 outside a countdown. */
+    evacuationSecondsLeft: t.uint8().default(0),
   },
   'SectorState',
 );

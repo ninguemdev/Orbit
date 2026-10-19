@@ -85,7 +85,7 @@ Antes da missão, o menu informa perda possível e regras de distribuição. Dur
 - **Equipamento próprio:** o que veio do stash conserva o ID reservado e o dono, só se move inteiro, sem dividir nem juntar, e só o dono o move, mesmo depois de deixá-lo no porão. O equipamento dos espaços de arma e ferramenta fica equipado.
 - **Espaço:** um movimento que não cabe inteiro é recusado sem mudar nada.
 
-Por enquanto nada disso é gravado: a extração (V03.05) e a liquidação (V03.07) levarão esse estado ao stash.
+Por enquanto nada disso é gravado: o manifesto (V03.06) e a liquidação (V03.07) levarão esse estado ao stash.
 
 Se o stash estiver cheio ao extrair, itens vão para caixa de recebimento permanente. Falta de espaço nunca descarta uma recompensa já confirmada. A caixa tem controle de abuso e histórico; não substitui a capacidade normal para entrar equipado.
 
@@ -96,6 +96,15 @@ A equipe entra numa zona, mantém a nave abaixo do limite de velocidade e ativa 
 Conta como extraído quem estiver vivo ou caído dentro da nave no momento da conclusão, incluindo reconexão pendente dentro da janela permitida. Mortos, abandonados e personagens em EVA ficam de fora. As regras aparecem na confirmação de saída.
 
 Depois da contagem, o servidor congela alterações econômicas da sala, gera o manifesto e inicia a liquidação. A tela mostra confirmação pendente até o banco confirmar. Repetir a conclusão não multiplica itens. O processo de persistência está em [dados e economia](06-DADOS-E-ECONOMIA.md).
+
+**Extração básica da 0.3 (V03.05).** Casco, zona, velocidade e contagem já funcionam na simulação da missão; manifesto (V03.06) e liquidação (V03.07) ainda não existem, então todo fim de partida continua voltando os itens reservados, sem conceder nada.
+
+- **Casco:** cada nave tem pontos de casco básicos (Batedora 100, Cargueira 140). Uma colisão só causa dano acima de 60 de velocidade de impacto (a parcela da velocidade realmente absorvida pela colisão); acima disso, cada unidade de impacto custa 0,3 ponto de casco. Casco a zero destrói a nave e perde a expedição. Rachaduras, motor e reparo chegam com os sistemas completos da 0.4 (V04.02).
+- **Console de saída:** por enquanto é o próprio console de comando. Quem está no leme ativa a evacuação; não existe um terceiro console dedicado nesta versão.
+- **Zona e velocidade:** a evacuação só começa com o casco inteiro dentro da zona de extração e a nave a, no máximo, 30% da velocidade máxima do próprio modelo.
+- **Contagem:** 10 s, contados pelo servidor; o cliente só exibe o valor recebido, nunca decide a conclusão. Sair da zona ou ultrapassar o limite de velocidade cancela a contagem; dano comum de colisão não cancela, só a destruição encerra a partida.
+- **Prazo da missão:** sem ninguém extrair em 1200 s (20 min), a expedição é perdida, igual à destruição.
+- **Elegibilidade:** ao concluir a evacuação, a sala calcula quem está a bordo (conectado; antes da EVA da 0.5, todo conectado está a bordo) e envia esse resultado a todos, pronto para o manifesto da V03.06.
 
 ## Falha, desconexão e cancelamento
 

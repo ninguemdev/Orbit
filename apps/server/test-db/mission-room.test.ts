@@ -1,18 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
-import { SectorId, ShipHullId } from '@orbit/catalog';
+import { SHIP_HULLS, SectorId, ShipHullId, type SectorDefinition } from '@orbit/catalog';
 import {
+  ClientMessage,
   type ExpeditionEndedNotice,
   MISSION_CANCELLED_CLOSE_CODE,
   MISSION_ROOM_NAME,
   MissionRoute,
+  type MissionOutcomePayload,
   type MissionTicketResponse,
   PartyClientMessage,
   type PartyRefusal,
   PartyServerMessage,
   RoomPhase,
+  ServerMessage,
   type SectorStateView,
+  TICK_RATE_HZ,
 } from '@orbit/contracts';
 import {
   activateExpedition,
@@ -70,6 +74,24 @@ function missionHelpers(get: () => ApiServer) {
 
 const closeCode = (room: MissionRoomClient) =>
   new Promise<number>((resolve) => room.onLeave((code) => resolve(code)));
+
+/** Walks the room's own crew member to a ship-local target, like a player would. */
+async function walkTo(room: MissionRoomClient, target: { x: number; y: number }) {
+  let seq = 0;
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const here = room.state.crew.get(room.sessionId);
+    if (!here) throw new Error('tripulante ausente');
+    const dx = target.x - here.x;
+    const dy = target.y - here.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 4) break;
+    if (Date.now() > deadline) throw new Error('não alcançou o alvo');
+    room.send(ClientMessage.CrewInput, { seq: seq++, x: dx / dist, y: dy / dist });
+    await new Promise((resolve) => setTimeout(resolve, 1000 / TICK_RATE_HZ));
+  }
+  room.send(ClientMessage.CrewInput, { seq, x: 0, y: 0 });
+}
 
 describe('mission room', () => {
   let api: ApiServer;
@@ -414,5 +436,68 @@ describe('mission activation failure', () => {
     await waitFor(() => room.state.phase === RoomPhase.Active, 'partida ativa', 8000);
     expect(failures).toBe(0);
     expect((await getActiveExpedition(api.db, leader.id))?.state).toBe('ACTIVE');
+  });
+});
+
+describe('mission room extraction', () => {
+  let api: ApiServer;
+  const party = partyHelpers(() => api);
+  const mission = missionHelpers(() => api);
+  /** The ship spawns already inside the zone, at rest: nobody needs to fly there. */
+  const EXTRACTION_SECTOR: SectorDefinition = {
+    id: SectorId.Open,
+    bounds: { minX: -2000, minY: -2000, maxX: 2000, maxY: 2000 },
+    obstacles: [],
+    containers: [],
+    extractionZones: [{ id: 'extraction.1', x: 0, y: 0, radius: 600 }],
+    shipSpawn: { position: { x: 0, y: 0 }, angle: 0 },
+  };
+
+  beforeAll(async () => {
+    api = await startApiServer(POLICY, { generateSector: () => EXTRACTION_SECTOR });
+  });
+
+  afterEach(async () => {
+    await mission.leaveAll();
+    await party.leaveAll();
+  });
+
+  afterAll(async () => {
+    await api?.close();
+  });
+
+  it('extracts once the helm operator counts down inside the zone, without granting anything yet', async () => {
+    const { leader, guest, party: leaderParty, guestRoom, pistols } = await party.readyPair();
+    const ended = party.messages<ExpeditionEndedNotice>(
+      guestRoom,
+      PartyServerMessage.ExpeditionEnded,
+    );
+    await party.confirm(leaderParty);
+    const room = await mission.enterMission(leader);
+    await mission.enterMission(guest);
+    await waitFor(() => room.state.phase === RoomPhase.Active, 'partida ativa');
+
+    const outcomes: MissionOutcomePayload[] = [];
+    room.onMessage(ServerMessage.MissionOutcome, (payload: MissionOutcomePayload) =>
+      outcomes.push(payload),
+    );
+
+    const seat = SHIP_HULLS[ShipHullId.Scout].helm.seat;
+    await walkTo(room, { x: seat.x - 15, y: seat.y });
+    room.send(ClientMessage.HelmRequest);
+    await waitFor(() => room.state.ship.operatorId === room.sessionId, 'operador no comando');
+
+    room.send(ClientMessage.RequestExtraction);
+    await waitFor(() => room.state.evacuationCounting, 'evacuação em contagem');
+
+    await waitFor(() => outcomes.length === 1, 'resultado da missão', 15_000);
+    expect(outcomes[0]?.outcome).toBe('extracted');
+    expect([...(outcomes[0]?.aboardAccountIds ?? [])].sort()).toEqual([leader.id, guest.id].sort());
+
+    await waitFor(() => ended.length === 1, 'aviso de encerramento');
+    expect(ended[0]).toEqual({ reason: 'aborted' });
+    expect(await getActiveExpedition(api.db, leader.id)).toBeNull();
+    const stash = (await party.inventory(guest)).stash;
+    expect(stash.find((entry) => entry.instanceId === pistols.guest)?.reserved).toBe(false);
   });
 });
