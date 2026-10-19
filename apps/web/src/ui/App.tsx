@@ -11,6 +11,7 @@ import { SectorConnection, defaultServerEndpoint } from '../network/sector-conne
 import { AccessScreen } from './AccessScreen';
 import { GameView } from './GameView';
 import { MissionInventoryPanel } from './MissionInventoryPanel';
+import { MissionResultPanel } from './MissionResultPanel';
 import { Hud } from './Hud';
 import { PreparationPanels } from './InventoryPanel';
 import { MissionSetupPanel } from './MissionSetupPanel';
@@ -332,6 +333,7 @@ export function App() {
               {screen.notice}
             </p>
           ) : null}
+          <MissionResultPanel />
           <div className="home-columns">
             <div className="home-column">
               <PartyPanel party={party} myAccountId={me.account.id} />

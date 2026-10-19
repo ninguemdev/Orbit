@@ -63,6 +63,8 @@ Resultado tem estados distintos: aguardando liquidação, confirmado e pendente 
 
 No próximo login, uma expedição pendente deve reaparecer como pendente ou resultado consolidado. O jogador não precisa acompanhar o socket conectado para a transação terminar.
 
+**Resultado persistido na 0.3 (V03.09).** O painel **Resultado da missão** aparece no menu sempre que `GET /api/me/mission-result` tem algo a mostrar: a missão mais recente que a conta já terminou, com o próprio equipamento devolvido, a carga comum recebida e o que foi perdido (vazio num aborto técnico ou preparação cancelada). Por vir do banco, não da sessão ao vivo, sobrevive a fechar a aba durante a confirmação e aparece de novo no próximo login. **Dispensar** marca a missão como vista (guardado no navegador); uma missão mais nova sempre reaparece, mesmo com uma anterior dispensada. Recompensa de contrato e condição de cada membro (vivo/caído/morto) ainda não existem; chegam com contratos (0.8) e sobrevivência pessoal (0.6).
+
 ## Arte super simples
 
 Personagens como círculos/cápsulas com visor e marcador de classe. Naves em poucas formas planas. Asteroides em polígonos ou sprites pequenos. Piso e paredes em tiles sem iluminação dinâmica pesada. Ruínas e estações reutilizam linguagem visual com ícones diferentes.
