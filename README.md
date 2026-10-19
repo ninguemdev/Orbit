@@ -141,6 +141,7 @@ Rotas JSON no servidor de jogo, com sessão em cookie `orbit_session` (HttpOnly,
 | `GET /api/me/loadout` | Loadout da próxima missão, com o problema de cada item (ex.: classe trocada) |
 | `PUT /api/me/loadout` | Substitui o loadout (`{ picks: [{ slot, instanceId }] }`); o servidor confere dono, espaço e classe |
 | `POST /api/me/stash/move` | Move um item entre espaços do próprio stash (`{ fromSlot, toSlot }`) |
+| `GET /api/me/mission-result` | A missão mais recente já terminada: devolvido, recebido e perdido (vazio num aborto técnico), ou `null` sem nenhuma ainda |
 | `POST /api/recovery` | Define nova senha com `{ nick, code, newPassword }`; o código vale uma vez e encerra as outras sessões |
 
 O cliente chama a API pela própria origem: em `pnpm dev` e `vite preview`, o Vite repassa `/api` ao servidor de jogo, como fará o proxy reverso em produção.

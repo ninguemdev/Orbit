@@ -12,6 +12,7 @@ const SESSION_ROUTES: readonly { method: string; path: string; body?: unknown }[
   { method: 'POST', path: AccountRoute.MyStashMove, body: { fromSlot: 0, toSlot: 1 } },
   { method: 'GET', path: AccountRoute.MyLoadout },
   { method: 'PUT', path: AccountRoute.MyLoadout, body: { picks: [] } },
+  { method: 'GET', path: AccountRoute.MyMissionResult },
   { method: 'POST', path: PartyRoute.Tickets, body: { intent: 'create' } },
 ];
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
