@@ -354,6 +354,10 @@ export const expeditionMembers = pgTable(
     primaryKey({ columns: [table.expeditionId, table.accountId] }),
     index('expedition_members_account_idx').on(table.accountId),
     check('expedition_members_class_id_format', sql`${table.classId} ~ '^class\\.[a-z]+$'`),
+    check(
+      'expedition_members_final_state_known',
+      sql`${table.finalState} IS NULL OR ${table.finalState} IN ('extracted', 'not_eligible', 'destroyed', 'timeout')`,
+    ),
   ],
 );
 
@@ -417,5 +421,30 @@ export const itemReservations = pgTable(
     check('item_reservations_slot_known', sql`${table.slot} IN (${quoted(LOADOUT_SLOTS)})`),
     check('item_reservations_quantity_positive', sql`${table.quantity} > 0`),
     check('item_reservations_location_stash', sql`${table.location} = 'stash'`),
+  ],
+);
+
+export const SETTLEMENT_OUTCOMES = ['extracted', 'destroyed', 'timeout'] as const;
+
+/**
+ * One liquidation per expedition (primary key), written once by `settleExpedition`
+ * (V03.07). `manifest` is the immutable record built by
+ * `apps/server/src/modules/settlement/manifest.ts`; `manifest_hash` lets a retry tell a
+ * repeat of the same proposal from a conflicting one without comparing the whole JSON.
+ */
+export const settlements = pgTable(
+  'settlements',
+  {
+    expeditionId: uuid('expedition_id')
+      .primaryKey()
+      .references(() => expeditions.id, { onDelete: 'restrict' }),
+    outcome: text('outcome').notNull(),
+    manifest: jsonb('manifest').notNull(),
+    manifestHash: text('manifest_hash').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    check('settlements_outcome_known', sql`${table.outcome} IN (${quoted(SETTLEMENT_OUTCOMES)})`),
+    check('settlements_manifest_hash_sha256_hex', sql`${table.manifestHash} ~ '^[0-9a-f]{64}$'`),
   ],
 );
