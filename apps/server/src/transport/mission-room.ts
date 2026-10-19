@@ -19,7 +19,7 @@ import type {
   MissionTicketStore,
 } from '../modules/mission/mission-directory';
 import { collectManifestItems } from '../modules/settlement/collect';
-import { type Manifest, buildManifest, manifestHash } from '../modules/settlement/manifest';
+import { buildManifest, manifestHash } from '../modules/settlement/manifest';
 import { MissionLoot } from '../simulation/mission-loot';
 import {
   type SectorSeed,
@@ -85,8 +85,8 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   #loot: MissionLoot | null = null;
   /** The match reached a terminal outcome once; `#resolveMission` does not repeat. */
   #resolved = false;
-  /** Set by `#resolveMission`; `onDispose` settles it for real instead of aborting. */
-  #settlement: { readonly manifest: Manifest; readonly hash: string } | null = null;
+  /** Set by `#resolveMission`; `#settled` sends it once the database confirms. */
+  #pendingOutcome: MissionOutcomePayload | null = null;
   /** What each session could reach when its inventory view was last sent. */
   readonly #sentAccess = new Map<string, string>();
   /** Last view sent to each session, to skip sending one that did not change. */
@@ -116,6 +116,7 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     this.#unwatch = this.#deps.expeditions.watch(options.expeditionId, {
       onCancelled: () => this.#close(MISSION_CANCELLED_CLOSE_CODE),
       onAborted: () => this.#close(MISSION_ENDED_CLOSE_CODE),
+      onSettled: () => this.#settled(),
     });
     const roster = await this.#deps.expeditions.roster(options.expeditionId);
     if (!roster || roster.state !== 'PREPARING' || this.#ended) {
@@ -197,18 +198,22 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     if (accountId && this.#seats.get(accountId) === client.sessionId) this.#seats.delete(accountId);
   }
 
+  /**
+   * A resolved outcome is never finished here: `#resolveMission` already kicked off
+   * `settle` (V03.07), and only `#settled` — fired by the watcher once the database
+   * confirms it — closes the room for that path, the same way `onAborted` already
+   * does for a technical abort decided elsewhere. By the time dispose runs on either
+   * path, `#ended` is already set and this returns at once.
+   */
   override onDispose(): void {
     this.#unwatch?.();
     this.#deps.directory.closed(this.#expeditionId);
     if (this.#ended || !this.#expeditionId) return;
     this.#ended = true;
     const expeditions = this.#deps.expeditions;
-    const settlement = this.#settlement;
-    const ending = settlement
-      ? expeditions.settle(this.#expeditionId, settlement.manifest, settlement.hash)
-      : this.#activated
-        ? expeditions.abort(this.#expeditionId)
-        : expeditions.cancel(this.#expeditionId, 'room_closed');
+    const ending = this.#activated
+      ? expeditions.abort(this.#expeditionId)
+      : expeditions.cancel(this.#expeditionId, 'room_closed');
     ending.catch((error: unknown) => {
       console.error(`[mission] não foi possível encerrar a expedição: ${errorName(error)}`);
     });
@@ -228,11 +233,15 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
 
   /**
    * Extraction, destruction or timeout (docs/02-GAMEPLAY.md, V03.05): builds the
-   * manifest from the live loot (V03.06), tells every client the outcome and who was
-   * aboard, then disconnects. Unlike `#close`, this leaves `#ended` untouched: the
-   * expedition is still ACTIVE in the database, so `onDispose` must still run and, now
-   * that `#settlement` is set, settles the manifest for real (V03.07) instead of the
-   * technical abort it falls back to for every other end of the room.
+   * manifest from the live loot (V03.06) and kicks off its settlement (V03.07), but
+   * does not yet tell anyone or close the room — `#settled` does that once the
+   * database confirms it, the same guarantee `ExpeditionWatcher` already gives the
+   * party room, so a client reading its result back right after disconnecting never
+   * races the commit. `settle` keeps retrying on its own, independent of this room, so
+   * nothing here needs to await it or run again if the room ends first for some
+   * unrelated reason (e.g. every client dropping triggers `autoDispose` before the
+   * commit): the worst case is a redundant technical abort that a locked, already
+   *-settled row on the database side safely refuses.
    */
   #resolveMission(): void {
     if (this.#resolved) return;
@@ -255,14 +264,19 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
       eligibleAccountIds: aboardAccountIds,
       items: collectManifestItems(this.#loot.inventory, roster),
     });
-    this.#settlement = { manifest, hash: manifestHash(manifest) };
-    const payload: MissionOutcomePayload = { outcome, aboardAccountIds };
-    for (const client of this.clients as MissionClient[]) {
-      client.send(ServerMessage.MissionOutcome, payload);
+    this.#pendingOutcome = { outcome, aboardAccountIds };
+    void this.#deps.expeditions.settle(this.#expeditionId, manifest, manifestHash(manifest));
+  }
+
+  /** The settlement from `#resolveMission` committed: now it is safe to tell and close. */
+  #settled(): void {
+    const payload = this.#pendingOutcome;
+    if (payload) {
+      for (const client of this.clients as MissionClient[]) {
+        client.send(ServerMessage.MissionOutcome, payload);
+      }
     }
-    if (this.#closing) return;
-    this.#closing = true;
-    void this.disconnect(MISSION_ENDED_CLOSE_CODE);
+    this.#close(MISSION_ENDED_CLOSE_CODE);
   }
 
   #accountOf(sessionId: string): string | null {

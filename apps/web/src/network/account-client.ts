@@ -5,6 +5,7 @@ import {
   AccountErrorCode,
   AccountRoute,
   type MeResponse,
+  type MissionResultResponse,
   type RecoveryCodeResponse,
   MissionRoute,
   type MissionTicketResponse,
@@ -74,6 +75,9 @@ export const accountClient = {
     requestJson<MeResponse>(AccountRoute.Recovery, 'POST', { nick, code, newPassword }),
   /** Ticket into the mission room of the account's expedition (single use). */
   missionTicket: () => requestJson<MissionTicketResponse>(MissionRoute.Tickets, 'POST', {}),
+  /** The most recent mission this account finished, if any. */
+  missionResult: () =>
+    withRetry(() => requestJson<MissionResultResponse>(AccountRoute.MyMissionResult, 'GET')),
 };
 
 /** Messages that say what to do next without revealing whether an account exists. */

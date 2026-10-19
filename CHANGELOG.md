@@ -19,6 +19,7 @@ O projeto usa versões `MAJOR.MINOR.PATCH` e tags `vX.Y.Z`. Os marcos 0.1 a 1.0 
 - A sala da missão liquida a expedição de verdade ao extrair, a nave ser destruída ou o prazo esgotar: monta o manifesto a partir do porão e do equipamento/mochila de cada membro e chama a liquidação em vez do aborto técnico. A party vê um aviso específico (“a missão terminou”) quando isso acontece, diferente do aviso de aborto técnico de antes. Sair da missão antes de qualquer desfecho continua sendo aborto técnico.
 - Recuperação confirmada com a liquidação real em jogo: reiniciar o processo cancela toda preparação vencida e aborta tecnicamente toda partida órfã sem conceder item algum (a liquidação é uma transação única, então não há estado parcial para recuperar), e nunca mexe numa expedição já encerrada normalmente.
 - `GET /api/me/mission-result`: a missão mais recente já terminada, com a própria parcela de itens devolvidos, recebidos e perdidos de um desfecho liquidado (extraído, destruído ou prazo esgotado), ou vazio num aborto técnico/preparação cancelada.
+- Painel **Resultado da missão** no menu, lido do servidor (sobrevive a fechar a aba e ao relogin): mostra o desfecho e os itens devolvidos/recebidos/perdidos, com **Dispensar**; uma missão mais nova sempre reaparece, mesmo com uma anterior dispensada.
 
 ### Alterado
 
