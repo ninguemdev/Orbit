@@ -9,6 +9,14 @@ const NOTICE_TEXT: Record<string, string> = {
   helm_out_of_range: 'Aproxime-se do console de comando (círculo amarelo).',
   not_helm_operator: 'Você não está no comando.',
   invalid_payload: 'Ação recusada pelo servidor.',
+  match_not_active: 'A missão começa quando toda a tripulação entrar.',
+  not_at_hatch: 'Vá até a eclusa de carga, na popa da nave.',
+  container_out_of_reach: 'Encoste a nave no contêiner para pegar o que ele guarda.',
+  invalid_transfer: 'Esse item não pode ir para lá.',
+  item_not_found: 'O item já foi pego.',
+  invalid_quantity: 'Quantidade inválida.',
+  inventory_full: 'Sem espaço para tudo isso.',
+  not_item_owner: 'Só o dono move o próprio equipamento.',
 };
 
 interface HudState {
@@ -93,7 +101,7 @@ export function Hud({ bridge, economy, onToggleEconomy, onLeave, leaveLabel = 'S
       ) : null}
       <p className="controls">
         WASD mover · E assumir/sair do comando · No comando: W/S acelerar/frear, A/D girar · Esc
-        sair do comando
+        sair do comando · Eclusa (popa): porão e contêineres
       </p>
       <div className="hud-actions">
         <label>

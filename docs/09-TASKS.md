@@ -291,7 +291,7 @@ P = revisão pequena; M = funcionalidade de porte moderado; G = subdividir em PR
 
 ### V03.04 — Coletar e transportar loot identificável
 
-- [ ] Pendente
+- [x] Concluída — aceite verificado em 19/10/2026 (PRs #49 e #50)
 
 **Área:** gameplay/data. **Tamanho:** M. **Depende de:** V03.03, V02.08.
 

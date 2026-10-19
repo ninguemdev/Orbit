@@ -11,6 +11,7 @@ import {
   PROTOCOL_VERSION,
   ServerMessage,
   type CrewInput,
+  type InventoryTransfer,
   type SectorStateView,
   type ShipInput,
 } from '@orbit/contracts';
@@ -58,6 +59,10 @@ export interface SectorBridge {
   /** Requests the helm, or releases it when already the operator. */
   toggleHelm(): void;
   releaseHelm(): void;
+  /** Items this player can see in a mission; null outside missions. */
+  inventory(): MissionInventoryView | null;
+  /** Asks the server to move a stack; the server checks position, owner and room. */
+  transfer(request: InventoryTransfer): void;
   /** Last refusal received from the server, for the HUD. */
   readonly lastNotice: Notice | null;
 }
@@ -210,6 +215,11 @@ export class SectorConnection implements SectorBridge {
   releaseHelm(): void {
     if (this.#status !== 'connected' || !this.isOperator) return;
     this.#room.send(ClientMessage.HelmRelease);
+  }
+
+  transfer(request: InventoryTransfer): void {
+    if (this.#status !== 'connected') return;
+    this.#room.send(ClientMessage.InventoryTransfer, request);
   }
 
   onStatus(listener: (status: ConnectionStatus) => void): () => void {

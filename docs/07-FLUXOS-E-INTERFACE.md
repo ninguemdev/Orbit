@@ -28,6 +28,12 @@ Depois da confirmação (V03.02), cada membro da expedição pede um ticket de m
 
 HUD informa vida, stamina, oxigênio/EVA, buffs, mochila e contrato pessoal. Dados comuns: casco, motor, oxigênio da nave, combustível, carga, calor, boost, sobrecarga e posição dos tripulantes. Radar apresenta informação autorizada dos sensores; não revela loot oculto.
 
+Na 0.3 (V03.04), o painel **Inventário da missão** fica no canto inferior direito e mostra só o que o servidor enviou ao jogador: equipado, mochila, porão da nave e, enquanto ele está na eclusa de carga (círculo verde na popa) com a nave encostada num contêiner, o conteúdo do contêiner.
+
+- **Botões:** **Pegar** e **Ao porão** levam o item inteiro; para pilhas de loot comum também há a variante de 1 unidade. Os botões só aparecem na eclusa, e equipamento de outro membro não tem botão.
+- **Atualização:** clicar só envia o pedido; a lista muda quando chega a nova visão do servidor.
+- **Recusas:** aparecem no HUD (fora da eclusa, contêiner longe, item já pego, sem espaço).
+
 Ao interagir com console, câmera e controles mudam de modo. É possível sair do console e caminhar de novo. Ter indicação visível do operador evita disputa silenciosa. Teclas de ação contextual mostram o alvo e a duração antes de começar.
 
 O piloto vê mapa e alertas de EVA; demais tripulantes podem consultar radar sem receber controle da nave. A equipe tem marcação de ponto de interesse/ping com cooldown. Comunicação por voz externa é suficiente para a primeira entrega; não implementar voz embutida.

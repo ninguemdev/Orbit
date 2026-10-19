@@ -20,6 +20,7 @@ export const PALETTE = {
   extraction: 0x4caf7a,
   extractionEdge: 0x8de8b0,
   minimap: 0x0a1120,
+  hatch: 0x8de8b0,
 } as const;
 
 const CREW_COLORS: readonly number[] = APPEARANCE_COLOR_ORDER.map(

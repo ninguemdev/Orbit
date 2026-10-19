@@ -252,6 +252,10 @@ export class SectorScene extends Phaser.Scene {
     }
     body.lineStyle(2, PALETTE.seat, 0.6);
     body.strokeCircle(hull.helm.seat.x, hull.helm.seat.y, hull.helm.interactRadius);
+    // Cargo hatch: where the crew reaches the hold and containers alongside.
+    const hatch = hull.cargoHatch;
+    body.lineStyle(2, PALETTE.hatch, 0.7);
+    body.strokeCircle(hatch.position.x, hatch.position.y, hatch.interactRadius);
 
     // Helm console drawn separately so its color can show whether it is taken.
     const console = hull.helm.body;
