@@ -333,7 +333,7 @@ export function App() {
               {screen.notice}
             </p>
           ) : null}
-          <MissionResultPanel />
+          <MissionResultPanel accountId={me.account.id} />
           <div className="home-columns">
             <div className="home-column">
               <PartyPanel party={party} myAccountId={me.account.id} />

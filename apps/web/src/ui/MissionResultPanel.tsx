@@ -3,7 +3,7 @@ import type { MissionResultItemView, MissionResultView } from '@orbit/contracts'
 import { accountClient } from '../network/account-client';
 import { itemName } from './catalog-names';
 
-const DISMISSED_KEY = 'orbit.missionResultSeen';
+const DISMISSED_KEY_PREFIX = 'orbit.missionResultSeen:';
 
 const OUTCOME_TEXT: Record<MissionResultView['outcome'], string> = {
   extracted: 'Extração concluída.',
@@ -14,17 +14,19 @@ const OUTCOME_TEXT: Record<MissionResultView['outcome'], string> = {
   cancelled: 'A preparação foi cancelada antes da missão começar.',
 };
 
-function readDismissed(): string | null {
+// Keyed by account: a shared browser must not hide one account's result because
+// another signed-in account on it dismissed theirs.
+function readDismissed(accountId: string): string | null {
   try {
-    return localStorage.getItem(DISMISSED_KEY);
+    return localStorage.getItem(DISMISSED_KEY_PREFIX + accountId);
   } catch {
     return null;
   }
 }
 
-function writeDismissed(expeditionId: string): void {
+function writeDismissed(accountId: string, expeditionId: string): void {
   try {
-    localStorage.setItem(DISMISSED_KEY, expeditionId);
+    localStorage.setItem(DISMISSED_KEY_PREFIX + accountId, expeditionId);
   } catch {
     // Per-browser convenience only; nothing breaks without it.
   }
@@ -41,19 +43,20 @@ function itemList(items: readonly MissionResultItemView[]): string {
  * survives a closed tab or a relogin — never from the live room session. Shown once
  * per result: dismissing it, or a newer result arriving, replaces what is remembered.
  */
-export function MissionResultPanel() {
+export function MissionResultPanel({ accountId }: { readonly accountId: string }) {
   const [result, setResult] = useState<MissionResultView | null>(null);
-  const [dismissed, setDismissed] = useState(readDismissed);
+  const [dismissed, setDismissed] = useState(() => readDismissed(accountId));
 
   useEffect(() => {
     let mounted = true;
+    setDismissed(readDismissed(accountId));
     void accountClient.missionResult().then((response) => {
       if (mounted && response.ok) setResult(response.data.result);
     });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [accountId]);
 
   if (!result || result.expeditionId === dismissed) return null;
   const { returned, received, lost } = result;
@@ -72,7 +75,7 @@ export function MissionResultPanel() {
         type="button"
         className="secondary"
         onClick={() => {
-          writeDismissed(result.expeditionId);
+          writeDismissed(accountId, result.expeditionId);
           setDismissed(result.expeditionId);
         }}
       >
