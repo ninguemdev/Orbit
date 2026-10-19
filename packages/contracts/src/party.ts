@@ -48,11 +48,12 @@ export const PartyServerMessage = {
 
 export interface ExpeditionEndedNotice {
   /**
-   * `expired`: no match started before the deadline; `party_changed`: the party changed;
-   * `aborted`: the match room closed and the reserved items went back (until extraction
-   * and settlement exist, this is how a match ends).
+   * `expired`: no match started before the deadline; `party_changed`: the party
+   * changed; `settled`: the match extracted, was destroyed or timed out, and the
+   * manifest was persisted; `aborted`: the match room closed before any of that (the
+   * reserved items simply went back).
    */
-  readonly reason: 'expired' | 'party_changed' | 'aborted';
+  readonly reason: 'expired' | 'party_changed' | 'settled' | 'aborted';
 }
 
 export const partyInviteSchema = z.strictObject({ nick: nickSchema });

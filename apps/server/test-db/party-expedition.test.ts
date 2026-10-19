@@ -234,6 +234,7 @@ describe('confirmation racing with the party', () => {
           roster: (expeditionId) => service.roster(expeditionId),
           activate: (expeditionId) => service.activate(expeditionId),
           abort: (expeditionId) => service.abort(expeditionId),
+          settle: (expeditionId, manifest, hash) => service.settle(expeditionId, manifest, hash),
         }),
       },
     );

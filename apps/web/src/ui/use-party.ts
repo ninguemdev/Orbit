@@ -59,6 +59,7 @@ const REFUSAL_TEXT: Record<string, string> = {
 const EXPEDITION_ENDED_TEXT: Record<ExpeditionEndedNotice['reason'], string> = {
   expired: 'A preparação expirou sem partida e os itens reservados voltaram ao stash.',
   party_changed: 'A party mudou: a preparação foi cancelada e os itens voltaram ao stash.',
+  settled: 'A missão terminou. Confira o stash e a caixa de recebimento.',
   aborted: 'A missão terminou sem extração e os itens reservados voltaram ao stash.',
 };
 

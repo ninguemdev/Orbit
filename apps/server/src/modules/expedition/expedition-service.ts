@@ -6,6 +6,7 @@ import {
   type ExpeditionRoster,
   type ExpeditionState,
   PREPARE_SECONDS,
+  type SettlementManifest,
   type StartExpeditionRefusal,
   abortExpedition,
   activateExpedition,
@@ -14,6 +15,7 @@ import {
   getExpeditionRoster,
   listPreparingExpeditions,
   listRunningExpeditions,
+  settleExpedition,
   startExpedition,
 } from '@orbit/database';
 import { errorName } from '../../infrastructure/error-name';
@@ -58,7 +60,9 @@ export interface ExpeditionWatcher {
   onCancelled?(reason: CancelReason): void;
   /** Every member loaded and the match started. */
   onActivated?(): void;
-  /** The running match ended and its reserved items went back (technical abort). */
+  /** The match extracted, was destroyed or timed out, and the manifest was persisted. */
+  onSettled?(): void;
+  /** The running match ended before a settlement and its reserved items went back. */
   onAborted?(): void;
 }
 
@@ -82,6 +86,12 @@ export interface MissionLifecycle extends ExpeditionStarter {
   activate(expeditionId: string): Promise<ActivateExpeditionResult>;
   /** Ends a running match returning the reserved items; retried until committed. */
   abort(expeditionId: string): Promise<boolean>;
+  /** Persists one extraction's manifest; retried until committed. */
+  settle(
+    expeditionId: string,
+    manifest: SettlementManifest,
+    manifestHash: string,
+  ): Promise<boolean>;
 }
 
 const REFUSAL: Readonly<Record<StartExpeditionRefusal | 'expedition_ended', PartyErrorCode>> = {
@@ -210,6 +220,14 @@ export class ExpeditionService implements MissionLifecycle {
     return this.#track(this.#abort(expeditionId));
   }
 
+  settle(
+    expeditionId: string,
+    manifest: SettlementManifest,
+    manifestHash: string,
+  ): Promise<boolean> {
+    return this.#track(this.#settle(expeditionId, manifest, manifestHash));
+  }
+
   /**
    * After a restart no expedition has a room (single process): preparations are
    * cancelled at their deadline and running matches aborted, both returning the
@@ -316,6 +334,29 @@ export class ExpeditionService implements MissionLifecycle {
     } catch (error) {
       console.error(`[expedition] não foi possível encerrar a expedição: ${errorName(error)}`);
       this.#later(expeditionId, RETRY_MS, () => this.#abort(expeditionId));
+      return false;
+    }
+  }
+
+  async #settle(
+    expeditionId: string,
+    manifest: SettlementManifest,
+    manifestHash: string,
+  ): Promise<boolean> {
+    try {
+      const result = await settleExpedition(this.#db, manifest, manifestHash);
+      if (!result.ok) {
+        // Not something a retry can fix: the expedition does not exist, or something
+        // else already ended it (e.g. a previous process's recovery aborted it).
+        console.error(`[expedition] liquidação recusada: ${result.reason}`);
+        return true;
+      }
+      this.#emit(expeditionId, (watcher) => watcher.onSettled?.());
+      this.#watchers.delete(expeditionId);
+      return true;
+    } catch (error) {
+      console.error(`[expedition] não foi possível liquidar a expedição: ${errorName(error)}`);
+      this.#later(expeditionId, RETRY_MS, () => this.#settle(expeditionId, manifest, manifestHash));
       return false;
     }
   }
