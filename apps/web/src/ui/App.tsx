@@ -260,6 +260,7 @@ export function App() {
             onToggleEconomy={toggleEconomy}
             onLeave={leave}
             leaveLabel={screen.mission ? 'Sair da missão' : 'Sair'}
+            mission={screen.mission}
           />
           {screen.mission ? <MissionInventoryPanel bridge={screen.connection} /> : null}
         </>

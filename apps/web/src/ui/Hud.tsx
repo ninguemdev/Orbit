@@ -14,7 +14,7 @@ const NOTICE_TEXT: Record<string, string> = {
   container_out_of_reach: 'Encoste a nave no contêiner para pegar o que ele guarda.',
   invalid_transfer: 'Esse item não pode ir para lá.',
   item_not_found: 'O item já foi pego.',
-  invalid_quantity: 'Quantidade inválida.',
+  invalid_quantity: 'A pilha mudou; tente de novo.',
   inventory_full: 'Sem espaço para tudo isso.',
   not_item_owner: 'Só o dono move o próprio equipamento.',
 };
@@ -66,10 +66,19 @@ interface HudProps {
   readonly onToggleEconomy: () => void;
   readonly onLeave: () => void;
   readonly leaveLabel?: string;
+  /** Mission rooms: mentions the cargo hatch in the controls. */
+  readonly mission?: boolean;
 }
 
 /** Overlay refreshed at 5 Hz from the latest authorized state, not every frame. */
-export function Hud({ bridge, economy, onToggleEconomy, onLeave, leaveLabel = 'Sair' }: HudProps) {
+export function Hud({
+  bridge,
+  economy,
+  onToggleEconomy,
+  onLeave,
+  leaveLabel = 'Sair',
+  mission = false,
+}: HudProps) {
   const [hud, setHud] = useState(() => readHud(bridge));
 
   useEffect(() => {
@@ -101,7 +110,7 @@ export function Hud({ bridge, economy, onToggleEconomy, onLeave, leaveLabel = 'S
       ) : null}
       <p className="controls">
         WASD mover · E assumir/sair do comando · No comando: W/S acelerar/frear, A/D girar · Esc
-        sair do comando · Eclusa (popa): porão e contêineres
+        sair do comando{mission ? ' · Eclusa (popa): porão e contêineres' : ''}
       </p>
       <div className="hud-actions">
         <label>

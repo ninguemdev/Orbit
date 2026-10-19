@@ -40,6 +40,8 @@ export class SectorScene extends Phaser.Scene {
   #ship: Phaser.GameObjects.Container | null = null;
   #helmConsole!: Phaser.GameObjects.Rectangle;
   #minimap: Minimap | null = null;
+  #hullId: ShipHullId = ShipHullId.Scout;
+  #hatchDrawn = false;
   #stars!: Phaser.GameObjects.TileSprite;
   #fpsText!: Phaser.GameObjects.Text;
   #fpsWindowStart: number | null = null;
@@ -89,6 +91,7 @@ export class SectorScene extends Phaser.Scene {
       this.#ship ??= this.#createShip(isShipHullId(ship.hullId) ? ship.hullId : ShipHullId.Scout);
       this.#ship.setPosition(ship.x, ship.y).setRotation(ship.angle);
       this.#helmConsole.setFillStyle(ship.operatorId ? PALETTE.consoleBusy : PALETTE.console);
+      if (!this.#hatchDrawn && this.#bridge.inventory()) this.#drawHatch(this.#ship);
       this.#syncCrew(this.#ship, snapshot.crew, ship.x, ship.y, ship.angle);
       this.cameras.main.centerOn(ship.x, ship.y);
       this.#minimap?.ship.setPosition(...this.#toMinimap(ship.x, ship.y)).setRotation(ship.angle);
@@ -227,7 +230,19 @@ export class SectorScene extends Phaser.Scene {
     return [minimap.map.x + mapX, minimap.map.y + mapY];
   }
 
+  /** Cargo hatch, only in missions: where the crew reaches the hold and containers. */
+  #drawHatch(ship: Phaser.GameObjects.Container): void {
+    const { position, interactRadius } = SHIP_HULLS[this.#hullId].cargoHatch;
+    const hatch = this.add.graphics();
+    hatch.lineStyle(2, PALETTE.hatch, 0.8);
+    hatch.strokeCircle(position.x, position.y, interactRadius);
+    // Below the crew, which is added to the ship later.
+    ship.addAt(hatch, 1);
+    this.#hatchDrawn = true;
+  }
+
   #createShip(hullId: ShipHullId): Phaser.GameObjects.Container {
+    this.#hullId = hullId;
     const hull = SHIP_HULLS[hullId];
     const container = this.add.container(0, 0).setDepth(1);
 
@@ -252,10 +267,6 @@ export class SectorScene extends Phaser.Scene {
     }
     body.lineStyle(2, PALETTE.seat, 0.6);
     body.strokeCircle(hull.helm.seat.x, hull.helm.seat.y, hull.helm.interactRadius);
-    // Cargo hatch: where the crew reaches the hold and containers alongside.
-    const hatch = hull.cargoHatch;
-    body.lineStyle(2, PALETTE.hatch, 0.7);
-    body.strokeCircle(hatch.position.x, hatch.position.y, hatch.interactRadius);
 
     // Helm console drawn separately so its color can show whether it is taken.
     const console = hull.helm.body;

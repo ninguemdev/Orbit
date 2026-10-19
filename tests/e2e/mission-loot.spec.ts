@@ -1,10 +1,11 @@
 import { type Page, expect, test } from '@playwright/test';
+import { SHIP_HULLS, ShipHullId } from '@orbit/catalog';
 import { closeOpenContexts, seedDev, signUpInNewContext } from './support/accounts';
 
 test.afterEach(closeOpenContexts);
 
-/** Cargo hatch of the scout, in ship-local coordinates (catalog `cargoHatch`). */
-const HATCH = { x: -125, y: 0 };
+/** The starter ship's cargo hatch, in ship-local coordinates. */
+const HATCH = SHIP_HULLS[ShipHullId.Scout].cargoHatch.position;
 
 interface MissionWorld {
   ship: { angle: number };
@@ -38,8 +39,8 @@ async function walkToHatch(page: Page) {
     if (screen.x / length < -0.38) keys.push('KeyA');
     if (screen.y / length > 0.38) keys.push('KeyS');
     if (screen.y / length < -0.38) keys.push('KeyW');
-    // Keep keyboard focus on the game, away from the HUD and the inventory panel.
-    await page.locator('canvas').click({ position: { x: 20, y: 300 } });
+    // Keep keyboard focus on the game: top middle, away from the HUD and the panel.
+    await page.locator('canvas').click({ position: { x: 640, y: 30 } });
     for (const key of keys) await page.keyboard.down(key);
     await page.waitForTimeout(Math.min(150, 20 + length * 3));
     for (const key of keys) await page.keyboard.up(key);

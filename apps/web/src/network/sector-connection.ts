@@ -63,6 +63,8 @@ export interface SectorBridge {
   inventory(): MissionInventoryView | null;
   /** Asks the server to move a stack; the server checks position, owner and room. */
   transfer(request: InventoryTransfer): void;
+  /** Calls `listener` with every inventory view the server sends; returns the unsubscribe. */
+  onInventory(listener: (view: MissionInventoryView) => void): () => void;
   /** Last refusal received from the server, for the HUD. */
   readonly lastNotice: Notice | null;
 }
@@ -93,6 +95,7 @@ export class SectorConnection implements SectorBridge {
   #closeCode: number | null = null;
   readonly #timers: ReturnType<typeof setInterval>[];
   readonly #statusListeners = new Set<(status: ConnectionStatus) => void>();
+  readonly #inventoryListeners = new Set<(view: MissionInventoryView) => void>();
 
   private constructor(room: Room<unknown, SectorStateView>) {
     this.#room = room;
@@ -114,6 +117,7 @@ export class SectorConnection implements SectorBridge {
     // Mission rooms send each member their own items; the test room never does.
     room.onMessage(ServerMessage.Inventory, (view: MissionInventoryView) => {
       this.#inventory = view;
+      for (const listener of this.#inventoryListeners) listener(view);
     });
     this.#timers = [
       setInterval(() => room.ping((ms) => (this.#pingMs = ms)), PING_INTERVAL_MS),
@@ -220,6 +224,11 @@ export class SectorConnection implements SectorBridge {
   transfer(request: InventoryTransfer): void {
     if (this.#status !== 'connected') return;
     this.#room.send(ClientMessage.InventoryTransfer, request);
+  }
+
+  onInventory(listener: (view: MissionInventoryView) => void): () => void {
+    this.#inventoryListeners.add(listener);
+    return () => this.#inventoryListeners.delete(listener);
   }
 
   onStatus(listener: (status: ConnectionStatus) => void): () => void {
