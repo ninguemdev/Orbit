@@ -79,6 +79,8 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   #loot: MissionLoot | null = null;
   /** What each session could reach when its inventory view was last sent. */
   readonly #sentAccess = new Map<string, string>();
+  /** Last view sent to each session, to skip sending one that did not change. */
+  readonly #sentView = new Map<string, string>();
 
   /** Refuses everyone unless registered through `defineMissionRoom`. */
   static override async onAuth(
@@ -158,7 +160,7 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     this.addCrewMember(client.sessionId, this.#roster.get(ticket.accountId) ?? ticket.nick);
     this.syncState();
     // The first view goes on the next tick (afterStep), once the client listens.
-    this.#sentAccess.delete(client.sessionId);
+    this.#forgetSent(client.sessionId);
     if (this.#seats.size === this.#roster.size) void this.#activate();
   }
 
@@ -175,12 +177,12 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   override onReconnect(client: MissionClient): void {
     super.onReconnect(client);
     // Changes made while away arrive on the next tick.
-    this.#sentAccess.delete(client.sessionId);
+    this.#forgetSent(client.sessionId);
   }
 
   override onLeave(client: MissionClient): void {
     super.onLeave(client);
-    this.#sentAccess.delete(client.sessionId);
+    this.#forgetSent(client.sessionId);
     const accountId = client.auth?.accountId;
     if (accountId && this.#seats.get(accountId) === client.sessionId) this.#seats.delete(accountId);
   }
@@ -226,7 +228,7 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
       this.notifyRefusal(client, ClientMessage.InventoryTransfer, refusal);
       return;
     }
-    // The hold and containers are shared: everyone gets a fresh view.
+    // The hold and containers are shared: whoever's view changed gets it again.
     for (const member of this.clients as MissionClient[]) this.#sendInventory(member);
   }
 
@@ -235,7 +237,16 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     const accountId = client.auth?.accountId;
     if (!this.#loot || !accountId) return;
     this.#sentAccess.set(client.sessionId, this.#loot.accessKey(client.sessionId));
-    client.send(ServerMessage.Inventory, this.#loot.view(accountId, client.sessionId));
+    const view = this.#loot.view(accountId, client.sessionId);
+    const serialized = JSON.stringify(view);
+    if (this.#sentView.get(client.sessionId) === serialized) return;
+    this.#sentView.set(client.sessionId, serialized);
+    client.send(ServerMessage.Inventory, view);
+  }
+
+  #forgetSent(sessionId: string): void {
+    this.#sentAccess.delete(sessionId);
+    this.#sentView.delete(sessionId);
   }
 
   /** Everyone loaded: the match starts if the preparation is still in time. */

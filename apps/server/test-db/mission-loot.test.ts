@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
-import { SHIP_HULLS, type SectorDefinition, SectorId, ShipHullId } from '@orbit/catalog';
+import { CREW, SHIP_HULLS, type SectorDefinition, SectorId, ShipHullId } from '@orbit/catalog';
 import {
   type ActionRejectedPayload,
   ClientMessage,
@@ -12,8 +12,9 @@ import {
   RoomPhase,
   type SectorStateView,
   ServerMessage,
+  TICK_RATE_HZ,
 } from '@orbit/contracts';
-import { type Vec2, distance, normalize, sub } from '@orbit/simulation';
+import { type Vec2, distance, normalize, scale, sub } from '@orbit/simulation';
 import { ALLOWED_ORIGIN, type ApiServer, call, startApiServer } from './api-harness';
 import { POLICY, type Player, partyHelpers, waitFor } from './party-helpers';
 
@@ -92,11 +93,15 @@ describe('mission loot', () => {
 
   /** Walks with direction inputs only; the server decides where the member ends up. */
   async function walkTo(crew: Crew, target: Vec2) {
+    // One tick of walking; closer than that, a smaller input lands on the target
+    // instead of stepping back and forth across it.
+    const step = CREW.walkSpeed / TICK_RATE_HZ;
     const deadline = Date.now() + 5000;
-    while (distance(position(crew), target) > 3) {
+    while (distance(position(crew), target) > 4) {
       if (Date.now() > deadline) throw new Error('Tempo esgotado andando até a eclusa');
-      const direction = normalize(sub(target, position(crew)));
-      crew.room.send(ClientMessage.CrewInput, { seq: crew.seq++, ...direction });
+      const offset = sub(target, position(crew));
+      const intent = scale(normalize(offset), Math.min(1, distance(offset, { x: 0, y: 0 }) / step));
+      crew.room.send(ClientMessage.CrewInput, { seq: crew.seq++, ...intent });
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
     crew.room.send(ClientMessage.CrewInput, { seq: crew.seq++, x: 0, y: 0 });

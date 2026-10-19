@@ -130,7 +130,7 @@ describe('MissionLoot', () => {
     expect(loot.transfer('acc-a', 'sess-a', take(scrapId(loot)))).toBe(ErrorCode.NotAtHatch);
   });
 
-  it('shows each member only their own backpack, and whose gear is in the hold', () => {
+  it('shows each member only their own backpack; only the owner moves their gear', () => {
     const { loot, a, b } = setUp();
     a.position = HATCH;
     expect(
@@ -154,19 +154,25 @@ describe('MissionLoot', () => {
     expect(bravo.container).toBeNull();
     expect(JSON.stringify(bravo)).not.toContain('res-pistol');
 
-    // From the hatch, Bravo takes Alfa's gear out of the hold; it stays Alfa's.
+    // Even at the hatch, Bravo cannot take Alfa's gear; common loot is fair game.
     b.position = { x: HATCH.x, y: HATCH.y + 15 };
+    const bravoTakes = (item: string, quantity: number) =>
+      loot.transfer('acc-b', 'sess-b', { item, from: 'cargo', to: 'backpack', quantity });
+    expect(bravoTakes('res-medkit', 2)).toBe(ErrorCode.NotItemOwner);
+    expect(loot.transfer('acc-b', 'sess-b', take(scrapId(loot), 3))).toBeNull();
+    // Alfa takes it back, still Alfa's.
     expect(
-      loot.transfer('acc-b', 'sess-b', {
+      loot.transfer('acc-a', 'sess-a', {
         item: 'res-medkit',
         from: 'cargo',
         to: 'backpack',
         quantity: 2,
       }),
     ).toBeNull();
-    expect(loot.view('acc-b', 'sess-b').backpack.items).toEqual([
-      { id: 'res-medkit', itemId: ItemId.Medkit, quantity: 2, ownerNick: 'Alfa', mine: false },
-    ]);
+    const back = loot
+      .view('acc-a', 'sess-a')
+      .backpack.items.find((item) => item.id === 'res-medkit');
+    expect(back).toMatchObject({ quantity: 2, mine: true });
   });
 
   it('changes the access key when the member or the ship moves', () => {

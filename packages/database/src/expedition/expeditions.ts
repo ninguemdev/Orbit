@@ -591,7 +591,9 @@ function reservedItems(snapshot: unknown): ReservedItem[] {
       typeof slot !== 'string' ||
       typeof instanceId !== 'string' ||
       typeof itemId !== 'string' ||
-      typeof quantity !== 'number'
+      typeof quantity !== 'number' ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
     ) {
       throw new Error('Snapshot de loadout inválido');
     }

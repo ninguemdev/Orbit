@@ -51,6 +51,7 @@ export const ErrorCode = {
   ItemNotFound: 'item_not_found',
   InvalidQuantity: 'invalid_quantity',
   InventoryFull: 'inventory_full',
+  NotItemOwner: 'not_item_owner',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

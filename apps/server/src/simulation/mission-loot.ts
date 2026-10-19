@@ -37,7 +37,8 @@ const REFUSALS: Readonly<Record<TransferRefusal, ErrorCode>> = {
  * reserved loadout (equipment stays equipped; the backpack can be emptied into the
  * hold); containers hold loot with temporary IDs. A member reaches the hold only at
  * the cargo hatch, and a container only from there with the hull alongside it, always
- * by the server's positions. Containers are only taken from.
+ * by the server's positions. Containers are only taken from, and a member's own gear
+ * is moved only by that member.
  */
 export class MissionLoot {
   readonly inventory: MissionInventory;
@@ -55,11 +56,11 @@ export class MissionLoot {
     this.#simulation = simulation;
     const inventory = new MissionInventory(newId);
     this.inventory = inventory;
-    inventory.addHolder(CARGO, 'cargo', simulation.ship.hull.cargoSlots);
+    inventory.addHolder(CARGO, simulation.ship.hull.cargoSlots);
     for (const member of members) {
       this.#nicks.set(member.accountId, member.nick);
-      inventory.addHolder(equipmentOf(member.accountId), 'equipment', EQUIP_SLOTS.length);
-      inventory.addHolder(backpackOf(member.accountId), 'backpack', BACKPACK_SLOTS);
+      inventory.addHolder(equipmentOf(member.accountId), EQUIP_SLOTS.length);
+      inventory.addHolder(backpackOf(member.accountId), BACKPACK_SLOTS);
       for (const item of member.loadout) {
         if (!isItemId(item.itemId)) throw new Error(`Item desconhecido no loadout: ${item.itemId}`);
         const holder = item.slot.startsWith('backpack.')
@@ -76,7 +77,7 @@ export class MissionLoot {
     }
     for (const container of simulation.sector.containers) {
       const contents = loot.get(container.id) ?? [];
-      inventory.addHolder(container.id, 'container', Math.max(1, contents.length));
+      inventory.addHolder(container.id, Math.max(1, contents.length));
       for (const stack of contents) {
         inventory.place(container.id, {
           id: newId(),
@@ -104,6 +105,9 @@ export class MissionLoot {
     const from = holderKey(request.from);
     const to = holderKey(request.to);
     if (from === null || to === null) return ErrorCode.ContainerOutOfReach;
+    // Gear brought from a stash is moved only by its owner, wherever it is.
+    const owner = this.inventory.find(request.item)?.item.owner ?? null;
+    if (owner !== null && owner !== accountId) return ErrorCode.NotItemOwner;
     const result = this.inventory.transfer({
       item: request.item,
       from,

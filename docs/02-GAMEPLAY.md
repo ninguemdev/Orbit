@@ -82,7 +82,7 @@ Antes da missão, o menu informa perda possível e regras de distribuição. Dur
 - **Movimentos:** ele pode mover itens entre o contêiner, a própria mochila (8 espaços) e o porão (24 espaços na Batedora, 40 na Cargueira). Contêineres só fornecem itens.
 - **Loot:** cada contêiner tem de 2 a 4 pilhas sorteadas da tabela `CONTAINER_LOOT` pela seed da missão, com IDs temporários aleatórios.
 - **Pilhas:** loot comum do mesmo item e da mesma origem se empilha até o limite do catálogo, e uma parte de uma pilha vira outra pilha com ID novo. A soma é sempre a original.
-- **Equipamento próprio:** o que veio do stash conserva o ID reservado e o dono, e só se move inteiro, sem dividir nem juntar. O equipamento dos espaços de arma e ferramenta fica equipado.
+- **Equipamento próprio:** o que veio do stash conserva o ID reservado e o dono, só se move inteiro, sem dividir nem juntar, e só o dono o move, mesmo depois de deixá-lo no porão. O equipamento dos espaços de arma e ferramenta fica equipado.
 - **Espaço:** um movimento que não cabe inteiro é recusado sem mudar nada.
 
 Por enquanto nada disso é gravado: a extração (V03.05) e a liquidação (V03.07) levarão esse estado ao stash.

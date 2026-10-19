@@ -12,10 +12,7 @@ export interface MissionItem {
   readonly origin: string;
 }
 
-export type HolderKind = 'backpack' | 'equipment' | 'cargo' | 'container';
-
 interface Holder {
-  readonly kind: HolderKind;
   readonly slots: number;
   readonly items: MissionItem[];
 }
@@ -51,9 +48,9 @@ export class MissionInventory {
     this.#newId = newId;
   }
 
-  addHolder(key: string, kind: HolderKind, slots: number): void {
+  addHolder(key: string, slots: number): void {
     if (this.#holders.has(key)) throw new Error(`Compartimento duplicado: ${key}`);
-    this.#holders.set(key, { kind, slots, items: [] });
+    this.#holders.set(key, { slots, items: [] });
   }
 
   /** Puts an item in a free slot when the mission starts. Never merges. */
@@ -71,10 +68,6 @@ export class MissionInventory {
 
   has(key: string): boolean {
     return this.#holders.has(key);
-  }
-
-  kind(key: string): HolderKind | undefined {
-    return this.#holders.get(key)?.kind;
   }
 
   slots(key: string): number {

@@ -29,9 +29,9 @@ function allIds(inventory: MissionInventory, keys: readonly string[]): string[] 
 
 function setUp(slots = { backpack: 8, cargo: 24 }) {
   const inventory = new MissionInventory(counter());
-  inventory.addHolder('container.1', 'container', 4);
-  inventory.addHolder('backpack:a', 'backpack', slots.backpack);
-  inventory.addHolder('cargo', 'cargo', slots.cargo);
+  inventory.addHolder('container.1', 4);
+  inventory.addHolder('backpack:a', slots.backpack);
+  inventory.addHolder('cargo', slots.cargo);
   return inventory;
 }
 
@@ -156,7 +156,7 @@ describe('MissionInventory', () => {
 
   it('gives a unique item to the first collector only', () => {
     const inventory = setUp();
-    inventory.addHolder('backpack:b', 'backpack', 8);
+    inventory.addHolder('backpack:b', 8);
     inventory.place('container.1', loot('l1', ItemId.Pistol, 1));
     const request = { item: 'l1', from: 'container.1', quantity: 1 } as const;
     expect(inventory.transfer({ ...request, to: 'backpack:a' })).toEqual({ ok: true });
@@ -183,11 +183,11 @@ describe('MissionInventory', () => {
     };
     const inventory = new MissionInventory(counter());
     const keys = ['container.1', 'container.2', 'backpack:a', 'backpack:b', 'cargo'];
-    inventory.addHolder('container.1', 'container', 4);
-    inventory.addHolder('container.2', 'container', 4);
-    inventory.addHolder('backpack:a', 'backpack', 3);
-    inventory.addHolder('backpack:b', 'backpack', 3);
-    inventory.addHolder('cargo', 'cargo', 5);
+    inventory.addHolder('container.1', 4);
+    inventory.addHolder('container.2', 4);
+    inventory.addHolder('backpack:a', 3);
+    inventory.addHolder('backpack:b', 3);
+    inventory.addHolder('cargo', 5);
     inventory.place('container.1', loot('s1', ItemId.Scrap, 30));
     inventory.place('container.1', loot('o1', ItemId.Ore, 50));
     inventory.place('container.1', loot('m1', ItemId.Medkit, 3));
