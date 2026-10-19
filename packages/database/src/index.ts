@@ -9,3 +9,4 @@ export * from './identity/recovery';
 export * from './inventory/inventory';
 export * from './inventory/loadout';
 export * from './expedition/expeditions';
+export * from './expedition/settlement';

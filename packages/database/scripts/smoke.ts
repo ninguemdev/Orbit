@@ -45,6 +45,7 @@ try {
       'loadout_items',
       'profiles',
       'sessions',
+      'settlements',
       'ship_unlocks',
       'wallets',
     ],
