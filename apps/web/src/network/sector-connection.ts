@@ -7,6 +7,7 @@ import {
   INTERPOLATION_DELAY_MS,
   RoomPhase,
   type MissionInventoryView,
+  type MissionOutcomePayload,
   type MissionTicketResponse,
   PROTOCOL_VERSION,
   ServerMessage,
@@ -65,6 +66,10 @@ export interface SectorBridge {
   transfer(request: InventoryTransfer): void;
   /** Calls `listener` with every inventory view the server sends; returns the unsubscribe. */
   onInventory(listener: (view: MissionInventoryView) => void): () => void;
+  /** Asks the server to start the evacuation countdown; only the helm operator can. */
+  requestExtraction(): void;
+  /** Calls `listener` once, right before the room closes with how the match ended. */
+  onMissionOutcome(listener: (outcome: MissionOutcomePayload) => void): () => void;
   /** Last refusal received from the server, for the HUD. */
   readonly lastNotice: Notice | null;
 }
@@ -96,6 +101,7 @@ export class SectorConnection implements SectorBridge {
   readonly #timers: ReturnType<typeof setInterval>[];
   readonly #statusListeners = new Set<(status: ConnectionStatus) => void>();
   readonly #inventoryListeners = new Set<(view: MissionInventoryView) => void>();
+  readonly #missionOutcomeListeners = new Set<(outcome: MissionOutcomePayload) => void>();
 
   private constructor(room: Room<unknown, SectorStateView>) {
     this.#room = room;
@@ -118,6 +124,10 @@ export class SectorConnection implements SectorBridge {
     room.onMessage(ServerMessage.Inventory, (view: MissionInventoryView) => {
       this.#inventory = view;
       for (const listener of this.#inventoryListeners) listener(view);
+    });
+    // Sent once, right before a mission room closes on its own (never on a plain leave).
+    room.onMessage(ServerMessage.MissionOutcome, (outcome: MissionOutcomePayload) => {
+      for (const listener of this.#missionOutcomeListeners) listener(outcome);
     });
     this.#timers = [
       setInterval(() => room.ping((ms) => (this.#pingMs = ms)), PING_INTERVAL_MS),
@@ -229,6 +239,16 @@ export class SectorConnection implements SectorBridge {
   onInventory(listener: (view: MissionInventoryView) => void): () => void {
     this.#inventoryListeners.add(listener);
     return () => this.#inventoryListeners.delete(listener);
+  }
+
+  requestExtraction(): void {
+    if (this.#status !== 'connected') return;
+    this.#room.send(ClientMessage.RequestExtraction);
+  }
+
+  onMissionOutcome(listener: (outcome: MissionOutcomePayload) => void): () => void {
+    this.#missionOutcomeListeners.add(listener);
+    return () => this.#missionOutcomeListeners.delete(listener);
   }
 
   onStatus(listener: (status: ConnectionStatus) => void): () => void {

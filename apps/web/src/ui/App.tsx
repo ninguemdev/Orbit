@@ -3,6 +3,7 @@ import {
   MISSION_CANCELLED_CLOSE_CODE,
   MISSION_ENDED_CLOSE_CODE,
   type MeResponse,
+  type MissionOutcomePayload,
 } from '@orbit/contracts';
 import { accountClient, describeAccountError } from '../network/account-client';
 import { installDebugHook } from '../network/debug-hook';
@@ -20,7 +21,7 @@ import { useParty } from './use-party';
 type Screen =
   | { kind: 'loading'; error?: string }
   | { kind: 'access'; notice?: string }
-  | { kind: 'home'; me: MeResponse; suggestRecovery: boolean; error?: string }
+  | { kind: 'home'; me: MeResponse; suggestRecovery: boolean; error?: string; notice?: string }
   | { kind: 'connecting'; me: MeResponse; target: 'dev' | 'mission' }
   /** In a sector: the development room of 0.1, or the mission room of an expedition. */
   | { kind: 'playing'; me: MeResponse; connection: SectorConnection; mission: boolean };
@@ -36,6 +37,13 @@ function missionJoinError(error: unknown): string {
   if (message.includes('mission_ended')) return 'Essa missão já terminou.';
   return 'Não foi possível entrar na missão. Tente de novo antes de o prazo acabar.';
 }
+
+/** How the mission ended (docs/02-GAMEPLAY.md, V03.05), shown once back at the menu. */
+const MISSION_OUTCOME_TEXT: Record<MissionOutcomePayload['outcome'], string> = {
+  extracted: 'Extração concluída.',
+  destroyed: 'A nave foi destruída.',
+  timeout: 'O tempo da missão esgotou.',
+};
 
 function readEconomyPreference(): boolean {
   try {
@@ -198,9 +206,15 @@ export function App() {
     if (!connection || !playingAs) return undefined;
     const me = playingAs;
     const removeHook = installDebugHook(connection);
+    let outcome: MissionOutcomePayload | null = null;
+    const unsubscribeOutcome = connection.onMissionOutcome((payload) => {
+      outcome = payload;
+    });
     const unsubscribe = connection.onStatus((status) => {
       if (status !== 'disconnected') return;
-      // The end of a mission is explained by the party notice; anything else is a loss.
+      // The end of a mission is explained by its outcome or the party notice; anything
+      // else is a loss. Manifesto and liquidação (V03.06/V03.07) still do not exist, so
+      // every outcome returns the reserved items the same way, without granting anything.
       const explained =
         connection.closeCode === MISSION_CANCELLED_CLOSE_CODE ||
         connection.closeCode === MISSION_ENDED_CLOSE_CODE;
@@ -208,11 +222,16 @@ export function App() {
         kind: 'home',
         me,
         suggestRecovery: false,
-        ...(explained ? {} : { error: 'Conexão encerrada.' }),
+        ...(outcome
+          ? { notice: MISSION_OUTCOME_TEXT[outcome.outcome] }
+          : explained
+            ? {}
+            : { error: 'Conexão encerrada.' }),
       });
     });
     return () => {
       unsubscribe();
+      unsubscribeOutcome();
       removeHook();
     };
   }, [connection, playingAs]);
@@ -306,6 +325,11 @@ export function App() {
           {screen.kind === 'home' && screen.error ? (
             <p role="alert" className="error">
               {screen.error}
+            </p>
+          ) : null}
+          {screen.kind === 'home' && screen.notice ? (
+            <p role="status" className="notice">
+              {screen.notice}
             </p>
           ) : null}
           <div className="home-columns">

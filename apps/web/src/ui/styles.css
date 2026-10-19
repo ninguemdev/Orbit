@@ -192,6 +192,14 @@ button:disabled {
   color: #9fb3cf;
 }
 
+.extraction {
+  margin-bottom: 0.5rem;
+}
+
+.extraction button {
+  width: 100%;
+}
+
 .hud-actions {
   display: flex;
   align-items: center;

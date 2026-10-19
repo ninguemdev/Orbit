@@ -19,7 +19,11 @@ export interface ShipSnapshot {
   readonly x: number;
   readonly y: number;
   readonly angle: number;
+  readonly vx: number;
+  readonly vy: number;
   readonly operatorId: string;
+  readonly hullPoints: number;
+  readonly maxHullPoints: number;
 }
 
 /** Plain copy of one received server state, stamped with local receive time. */
@@ -29,6 +33,10 @@ export interface WorldSnapshot {
   readonly phase: string;
   readonly ship: ShipSnapshot;
   readonly crew: ReadonlyMap<string, CrewSnapshot>;
+  /** 'active' | 'extracted' | 'destroyed' | 'timeout'; only set in a mission. */
+  readonly missionOutcome: string;
+  readonly evacuationCounting: boolean;
+  readonly evacuationSecondsLeft: number;
 }
 
 export function snapshotFromState(state: SectorStateView, receivedAt: number): WorldSnapshot {
@@ -54,9 +62,16 @@ export function snapshotFromState(state: SectorStateView, receivedAt: number): W
       x: ship.x,
       y: ship.y,
       angle: ship.angle,
+      vx: ship.vx,
+      vy: ship.vy,
       operatorId: ship.operatorId,
+      hullPoints: ship.hullPoints,
+      maxHullPoints: ship.maxHullPoints,
     },
     crew,
+    missionOutcome: state.missionOutcome,
+    evacuationCounting: state.evacuationCounting,
+    evacuationSecondsLeft: state.evacuationSecondsLeft,
   };
 }
 
