@@ -15,36 +15,56 @@ interface MissionWorld {
 const world = (page: Page) =>
   page.evaluate(() => window.__orbit?.latest() as MissionWorld | null | undefined);
 
+/** Close enough: well inside the hatch's interaction radius (30). */
+const ARRIVED = 18;
+
+/** Screen keys for the ship-local direction from the member to the hatch, or null when there. */
+async function keysToHatch(page: Page, id: string): Promise<string[] | null> {
+  const state = await world(page);
+  const self = state?.crew[id];
+  if (!state || !self) throw new Error('estado ausente');
+  const local = { x: HATCH.x - self.x, y: HATCH.y - self.y };
+  const length = Math.hypot(local.x, local.y);
+  if (length < ARRIVED) return null;
+  // The camera does not turn with the ship: turn the direction by its heading.
+  const { angle } = state.ship;
+  const screen = {
+    x: (local.x * Math.cos(angle) - local.y * Math.sin(angle)) / length,
+    y: (local.x * Math.sin(angle) + local.y * Math.cos(angle)) / length,
+  };
+  const keys: string[] = [];
+  if (screen.x > 0.38) keys.push('KeyD');
+  if (screen.x < -0.38) keys.push('KeyA');
+  if (screen.y > 0.38) keys.push('KeyS');
+  if (screen.y < -0.38) keys.push('KeyW');
+  return keys;
+}
+
 /**
- * Walks to the hatch in closed loop on the authoritative position. The camera does
- * not turn with the ship, so the wanted ship-local direction is turned into screen
- * keys by the ship's heading.
+ * Walks to the hatch in closed loop on the authoritative position: holds the keys
+ * until the member arrives or the needed keys change, then lets go. Short taps are
+ * not used: on a slow CI frame rate they may not produce any input at all.
  */
 async function walkToHatch(page: Page) {
   const id = await page.evaluate(() => window.__orbit?.sessionId ?? '');
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const state = await world(page);
-    const self = state?.crew[id];
-    if (!state || !self) throw new Error('estado ausente');
-    const local = { x: HATCH.x - self.x, y: HATCH.y - self.y };
-    if (Math.hypot(local.x, local.y) < 12) return;
-    const { angle } = state.ship;
-    const screen = {
-      x: local.x * Math.cos(angle) - local.y * Math.sin(angle),
-      y: local.x * Math.sin(angle) + local.y * Math.cos(angle),
-    };
-    const length = Math.hypot(screen.x, screen.y);
-    const keys: string[] = [];
-    if (screen.x / length > 0.38) keys.push('KeyD');
-    if (screen.x / length < -0.38) keys.push('KeyA');
-    if (screen.y / length > 0.38) keys.push('KeyS');
-    if (screen.y / length < -0.38) keys.push('KeyW');
-    // Keep keyboard focus on the game: top middle, away from the HUD and the panel.
-    await page.locator('canvas').click({ position: { x: 640, y: 30 } });
+  // Keyboard focus on the game: top middle, away from the HUD and the panel.
+  await page.locator('canvas').click({ position: { x: 640, y: 30 } });
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const keys = await keysToHatch(page, id);
+    if (keys === null) return;
     for (const key of keys) await page.keyboard.down(key);
-    await page.waitForTimeout(Math.min(150, 20 + length * 3));
-    for (const key of keys) await page.keyboard.up(key);
-    await page.waitForTimeout(150);
+    try {
+      const deadline = Date.now() + 2000;
+      while (Date.now() < deadline) {
+        const now = await keysToHatch(page, id);
+        if (now === null || now.join() !== keys.join()) break;
+        await page.waitForTimeout(15);
+      }
+    } finally {
+      for (const key of keys) await page.keyboard.up(key);
+    }
+    // The client sends a neutral input on release; let the last position arrive.
+    await page.waitForTimeout(300);
   }
   throw new Error('não chegou à eclusa');
 }
