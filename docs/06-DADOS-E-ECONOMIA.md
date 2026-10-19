@@ -82,6 +82,8 @@ Uma carga roubada por pirata sai da nave do jogador e passa para a carga do pira
 
 Ao completar a extração, congelar interações que alteram itens. Criar no servidor um manifesto com expedição, participantes elegíveis, destinos, quantidades, itens devolvidos/perdidos, contratos concluídos e versões. O cliente não fornece esse manifesto.
 
+Implementado na 0.3 (V03.06, só domínio: ainda sem fiação na sala nem no banco): `apps/server/src/modules/settlement`. `collectManifestItems` lê o porão e o equipamento/mochila de cada membro de um `MissionInventory` (nunca um contêiner não alcançado: o que não foi coletado fica para trás). `buildManifest` é uma função pura — mesma entrada, mesmo manifesto e mesmo hash (`manifestHash`), ordenando o resultado pelo ID de origem para não depender da ordem de coleta — que resolve cada item: fora de `extracted`, tudo é perdido (`mission_failed`); equipamento próprio volta ao dono se ele está entre os elegíveis, senão é perdido (nunca passa a outra pessoa); loot comum é dividido em quantidades inteiras cuja soma é a pilha original, com um cursor rotativo (gravado no manifesto) decidindo quem recebe a sobra de cada pilha, para a mesma pessoa não ficar sempre com o resto; uma pilha indivisível vai a uma única pessoa. Dados conflitantes (conta elegível fora do roster, item ou conta repetidos, quantidade inválida) são recusados com erro. Ligar isso à sala e à liquidação real no banco é a V03.07.
+
 Uma transação curta faz:
 
 1. Bloquear expedição e consultar `settlements` por ID único. Se já existe, devolver o resultado persistido.

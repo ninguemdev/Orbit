@@ -21,9 +21,10 @@ export interface LootMember {
   }[];
 }
 
-const CARGO = 'cargo';
-const backpackOf = (accountId: string) => `backpack:${accountId}`;
-const equipmentOf = (accountId: string) => `equipment:${accountId}`;
+/** Holder keys of `MissionInventory`; reused by settlement to collect what to resolve. */
+export const CARGO = 'cargo';
+export const backpackOf = (accountId: string) => `backpack:${accountId}`;
+export const equipmentOf = (accountId: string) => `equipment:${accountId}`;
 
 const REFUSALS: Readonly<Record<TransferRefusal, ErrorCode>> = {
   invalid_transfer: ErrorCode.InvalidTransfer,
