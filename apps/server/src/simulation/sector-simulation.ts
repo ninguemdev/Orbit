@@ -1,5 +1,7 @@
 import {
+  COLLISION_DAMAGE,
   CREW,
+  EXTRACTION,
   OPEN_SECTOR,
   SECTORS,
   SHIP_HULLS,
@@ -24,6 +26,7 @@ import {
   type ShipKinematics,
   type Vec2,
   distance,
+  length,
   stepCrew,
   stepShip,
 } from '@orbit/simulation';
@@ -70,6 +73,17 @@ export interface ShipRuntime {
   operatorId: string | null;
   /** Recreated for every new operator: each client numbers its own inputs. */
   control: ContinuousInputGate<ShipInput>;
+  /** Hull points left; the mission is lost once this reaches 0. */
+  hullPoints: number;
+}
+
+/** How a mission with extraction rules ends; 'active' until then. */
+export type MissionOutcome = 'active' | 'extracted' | 'destroyed' | 'timeout';
+
+export interface EvacuationState {
+  readonly counting: boolean;
+  /** Server clock deadline while counting; meaningless otherwise. */
+  readonly deadlineMs: number;
 }
 
 export type CrewInputResult = InputOfferResult | 'unknown_crew';
@@ -83,6 +97,16 @@ export type HelmResult =
         | typeof ErrorCode.HelmOutOfRange
         | typeof ErrorCode.NotHelmOperator;
     };
+export type ExtractionResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly code:
+        | typeof ErrorCode.NotHelmOperator
+        | typeof ErrorCode.MatchNotActive
+        | typeof ErrorCode.NotInExtractionZone
+        | typeof ErrorCode.ExtractionSpeedTooHigh;
+    };
 
 /**
  * Authoritative simulation of one sector instance. Plain TypeScript: no network,
@@ -94,6 +118,12 @@ export class SectorSimulation {
   readonly ship: ShipRuntime;
   readonly crew = new Map<string, CrewRuntime>();
   tick = 0;
+  /** Collision damage, extraction and the mission timeout only apply in a mission. */
+  readonly missionRules: boolean;
+  outcome: MissionOutcome = 'active';
+  evacuation: EvacuationState = { counting: false, deadlineMs: 0 };
+  /** Set on the first step, in server clock terms; null before that. */
+  #missionStartMs: number | null = null;
   readonly #crewMovement: CrewMovementParams;
   /** What the ship collides with: asteroids and containers. */
   readonly #geometry: SectorGeometry;
@@ -101,8 +131,10 @@ export class SectorSimulation {
   constructor(
     sector: SectorDefinition = SECTORS[SectorId.Dev],
     hullId: ShipHullId = ShipHullId.Scout,
+    missionRules = false,
   ) {
     this.sector = sector;
+    this.missionRules = missionRules;
     this.#geometry = { bounds: sector.bounds, obstacles: sectorSolids(sector) };
     const hull = SHIP_HULLS[hullId];
     this.ship = {
@@ -114,6 +146,7 @@ export class SectorSimulation {
       },
       operatorId: null,
       control: shipGate(),
+      hullPoints: hull.maxHull,
     };
     this.#crewMovement = {
       speed: CREW.walkSpeed,
@@ -201,6 +234,42 @@ export class SectorSimulation {
     return { ok: true };
   }
 
+  /** Whether the whole hull fits inside the sector's extraction zone, if it has one. */
+  isInExtractionZone(): boolean {
+    const zone = this.sector.extractionZones[0];
+    if (!zone) return false;
+    const reach = zone.radius - this.ship.hull.handling.radius;
+    return reach >= 0 && distance(this.ship.kinematics.position, zone) <= reach;
+  }
+
+  /** Whether the ship is slow enough to extract, a fraction of its own top speed. */
+  isUnderExtractionSpeed(): boolean {
+    const limit = this.ship.hull.handling.maxSpeed * EXTRACTION.maxSpeedFraction;
+    return length(this.ship.kinematics.velocity) <= limit;
+  }
+
+  /** Ids of the crew currently aboard: connected and not out on the hull (EVA is 0.5). */
+  aboardCrewIds(): string[] {
+    return [...this.crew.values()].filter((member) => member.connected).map((member) => member.id);
+  }
+
+  /**
+   * Starts the evacuation countdown from the helm, once the hull is inside the
+   * extraction zone and slow enough. Repeating the request while already counting is
+   * a no-op success; leaving the zone or speeding up cancels it in `step`.
+   */
+  requestExtraction(id: string, nowMs: number): ExtractionResult {
+    if (this.outcome !== 'active') return { ok: false, code: ErrorCode.MatchNotActive };
+    if (this.ship.operatorId !== id) return { ok: false, code: ErrorCode.NotHelmOperator };
+    if (this.evacuation.counting) return { ok: true };
+    if (!this.isInExtractionZone()) return { ok: false, code: ErrorCode.NotInExtractionZone };
+    if (!this.isUnderExtractionSpeed()) {
+      return { ok: false, code: ErrorCode.ExtractionSpeedTooHigh };
+    }
+    this.evacuation = { counting: true, deadlineMs: nowMs + EXTRACTION.evacuationSeconds * 1000 };
+    return { ok: true };
+  }
+
   releaseHelm(id: string): HelmResult {
     if (this.ship.operatorId !== id) return { ok: false, code: ErrorCode.NotHelmOperator };
     this.ship.operatorId = null;
@@ -229,19 +298,51 @@ export class SectorSimulation {
     this.tick++;
     const control =
       this.ship.operatorId === null ? NEUTRAL_SHIP_INPUT : this.ship.control.current(nowMs);
-    this.ship.kinematics = stepShip(
+    const shipStep = stepShip(
       this.ship.kinematics,
       control,
       dtSeconds,
       this.ship.hull.handling,
       this.#geometry,
     );
+    this.ship.kinematics = shipStep.state;
     for (const member of this.crew.values()) {
       if (member.atHelm) continue; // Seated operators steer the ship instead of walking.
       const input = member.movement.current(nowMs);
       member.position = stepCrew(member.position, input, dtSeconds, this.#crewMovement);
       member.lastAppliedSeq = input === NEUTRAL_CREW_INPUT ? member.lastAppliedSeq : input.seq;
     }
+    if (this.missionRules) this.#advanceMission(shipStep.impactSpeed, nowMs);
+  }
+
+  /** Basic hull, extraction and mission timeout (docs/02-GAMEPLAY.md, V03.05). */
+  #advanceMission(impactSpeed: number, nowMs: number): void {
+    this.#missionStartMs ??= nowMs;
+    if (this.outcome !== 'active') return;
+
+    if (impactSpeed > COLLISION_DAMAGE.minImpactSpeed) {
+      const damage =
+        (impactSpeed - COLLISION_DAMAGE.minImpactSpeed) * COLLISION_DAMAGE.hullPerImpactSpeed;
+      this.ship.hullPoints = Math.max(0, this.ship.hullPoints - damage);
+    }
+    if (this.ship.hullPoints <= 0) {
+      this.outcome = 'destroyed';
+      this.evacuation = { counting: false, deadlineMs: 0 };
+      return;
+    }
+
+    if (nowMs - this.#missionStartMs >= EXTRACTION.maxMissionSeconds * 1000) {
+      this.outcome = 'timeout';
+      this.evacuation = { counting: false, deadlineMs: 0 };
+      return;
+    }
+
+    if (!this.evacuation.counting) return;
+    if (!this.isInExtractionZone() || !this.isUnderExtractionSpeed()) {
+      this.evacuation = { counting: false, deadlineMs: 0 };
+      return;
+    }
+    if (nowMs >= this.evacuation.deadlineMs) this.outcome = 'extracted';
   }
 
   #freeSpawn(preferred: number): Vec2 {

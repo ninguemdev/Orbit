@@ -48,3 +48,14 @@ export interface MissionInventoryView {
   readonly cargo: HolderView;
   readonly container: (HolderView & { readonly id: string }) | null;
 }
+
+/**
+ * How the match ended (docs/02-GAMEPLAY.md, V03.05): extracted and the crew eligible
+ * for it (connected, aboard; nobody can be outside before EVA in 0.5), destroyed or
+ * timed out. Sent once, right before the room closes; manifest and settlement (loot,
+ * stash) are still V03.06/V03.07, so nothing here is persisted yet.
+ */
+export interface MissionOutcomePayload {
+  readonly outcome: 'extracted' | 'destroyed' | 'timeout';
+  readonly aboardAccountIds: readonly string[];
+}

@@ -111,32 +111,41 @@ describe('stepShip', () => {
 
   it('turns and accelerates along its heading', () => {
     const turned = stepShip(rest, { thrust: 0, turn: 1 }, 0.5, handling, empty);
-    expect(turned.angle).toBeCloseTo(1);
+    expect(turned.state.angle).toBeCloseTo(1);
     const moved = stepShip(rest, { thrust: 1, turn: 0 }, 1, handling, empty);
-    expect(moved.velocity.x).toBeCloseTo(100);
-    expect(moved.velocity.y).toBeCloseTo(0);
+    expect(moved.state.velocity.x).toBeCloseTo(100);
+    expect(moved.state.velocity.y).toBeCloseTo(0);
+    expect(moved.impactSpeed).toBe(0);
   });
 
   it('never exceeds max speed', () => {
     let state = rest;
     for (let i = 0; i < 200; i++)
-      state = stepShip(state, { thrust: 1, turn: 0 }, 0.05, handling, empty);
+      state = stepShip(state, { thrust: 1, turn: 0 }, 0.05, handling, empty).state;
     expect(Math.hypot(state.velocity.x, state.velocity.y)).toBeLessThanOrEqual(200 + 1e-9);
   });
 
-  it('stops at an obstacle instead of passing through it at high speed', () => {
+  it('stops at an obstacle instead of passing through it at high speed, reporting the impact', () => {
     const fast = { ...rest, velocity: { x: 200, y: 0 } };
     const sector = { bounds, obstacles: [{ x: 15, y: 0, radius: 2 }] };
     const after = stepShip(fast, { thrust: 0, turn: 0 }, 1, handling, sector);
-    expect(after.position.x).toBeLessThan(15);
-    expect(after.velocity.x).toBeCloseTo(0);
+    expect(after.state.position.x).toBeLessThan(15);
+    expect(after.state.velocity.x).toBeCloseTo(0);
+    expect(after.impactSpeed).toBeCloseTo(200);
+  });
+
+  it('reports no impact when gliding past without touching anything', () => {
+    const grazing = { ...rest, position: { x: 0, y: 100 }, velocity: { x: 200, y: 0 } };
+    const sector = { bounds, obstacles: [{ x: 15, y: 0, radius: 2 }] };
+    const after = stepShip(grazing, { thrust: 0, turn: 0 }, 1, handling, sector);
+    expect(after.impactSpeed).toBe(0);
   });
 
   it('stays inside the sector bounds', () => {
     const edge = { ...rest, position: { x: 990, y: 0 }, velocity: { x: 200, y: 0 } };
     const after = stepShip(edge, { thrust: 1, turn: 0 }, 1, handling, empty);
-    expect(after.position.x).toBe(1000 - 20);
-    expect(after.velocity.x).toBe(0);
+    expect(after.state.position.x).toBe(1000 - 20);
+    expect(after.state.velocity.x).toBe(0);
   });
 });
 

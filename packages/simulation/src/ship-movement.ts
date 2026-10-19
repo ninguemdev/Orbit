@@ -39,6 +39,16 @@ export interface SectorGeometry {
 
 export const NEUTRAL_SHIP_CONTROL: ShipControl = Object.freeze({ thrust: 0, turn: 0 });
 
+export interface ShipStepResult {
+  readonly state: ShipKinematics;
+  /**
+   * Inward speed removed by collisions this step, summed over every obstacle the
+   * sweep touched; 0 without contact. A graze at a shallow angle barely registers,
+   * a head-on hit carries most of the speed into it.
+   */
+  readonly impactSpeed: number;
+}
+
 function sanitizeControl(control: ShipControl): ShipControl {
   return {
     thrust: Number.isFinite(control.thrust) ? clamp(control.thrust, -1, 1) : 0,
@@ -62,7 +72,7 @@ export function stepShip(
   dtSeconds: number,
   handling: ShipHandling,
   sector: SectorGeometry,
-): ShipKinematics {
+): ShipStepResult {
   const control = sanitizeControl(rawControl);
   const angle = wrapAngle(state.angle + control.turn * handling.turnRate * dtSeconds);
   const acceleration =
@@ -75,6 +85,7 @@ export function stepShip(
 
   let position = state.position;
   let remaining = scale(velocity, dtSeconds);
+  let impactSpeed = 0;
   for (let iteration = 0; iteration < 3; iteration++) {
     const hit = sweepCircle(position, remaining, handling.radius, sector.obstacles);
     if (hit === null) {
@@ -82,6 +93,8 @@ export function stepShip(
       break;
     }
     position = add(position, scale(remaining, hit.t));
+    const inward = dot(velocity, hit.normal);
+    if (inward < 0) impactSpeed += -inward;
     remaining = slide(scale(remaining, 1 - hit.t), hit.normal);
     velocity = slide(velocity, hit.normal);
   }
@@ -91,5 +104,5 @@ export function stepShip(
   if (contained.x !== position.x) velocity = { x: 0, y: velocity.y };
   if (contained.y !== position.y) velocity = { x: velocity.x, y: 0 };
 
-  return { position: contained, velocity, angle };
+  return { state: { position: contained, velocity, angle }, impactSpeed };
 }

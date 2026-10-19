@@ -67,6 +67,7 @@ export abstract class SectorRoom<TAuth> extends Room<{
     this.state.phase = RoomPhase.Preparing;
     this.state.ship = new ShipState();
     this.state.ship.hullId = this.simulation.ship.hull.id;
+    this.state.ship.maxHullPoints = this.simulation.ship.hull.maxHull;
     this.state.layout = layoutState(this.simulation);
     this.syncState();
     this.setFixedTimestep((ctx) => {
@@ -99,6 +100,15 @@ export abstract class SectorRoom<TAuth> extends Room<{
       if (!parsed.ok) return this.rejectInvalid(client, ClientMessage.HelmRelease, parsed.code);
       const result = this.simulation.releaseHelm(client.sessionId);
       if (!result.ok) this.notifyRefusal(client, ClientMessage.HelmRelease, result.code);
+      this.syncState();
+    });
+    this.onMessage(ClientMessage.RequestExtraction, (client, raw: unknown) => {
+      const parsed = parseEmptyPayload(raw);
+      if (!parsed.ok) {
+        return this.rejectInvalid(client, ClientMessage.RequestExtraction, parsed.code);
+      }
+      const result = this.simulation.requestExtraction(client.sessionId, this.now());
+      if (!result.ok) this.notifyRefusal(client, ClientMessage.RequestExtraction, result.code);
       this.syncState();
     });
     this.onMessage('*', (client, type) => {
@@ -173,6 +183,12 @@ export abstract class SectorRoom<TAuth> extends Room<{
     state.ship.vx = kinematics.velocity.x;
     state.ship.vy = kinematics.velocity.y;
     state.ship.operatorId = simulation.ship.operatorId ?? '';
+    state.ship.hullPoints = simulation.ship.hullPoints;
+    state.missionOutcome = simulation.outcome;
+    state.evacuationCounting = simulation.evacuation.counting;
+    state.evacuationSecondsLeft = simulation.evacuation.counting
+      ? Math.max(0, Math.ceil((simulation.evacuation.deadlineMs - this.now()) / 1000))
+      : 0;
     for (const member of simulation.crew.values()) {
       const view = state.crew.get(member.id);
       if (!view) continue;

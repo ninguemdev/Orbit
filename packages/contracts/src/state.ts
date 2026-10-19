@@ -36,6 +36,8 @@ export interface ShipView {
   readonly vy: number;
   /** Session id of the helm operator, or empty. */
   readonly operatorId: string;
+  readonly hullPoints: number;
+  readonly maxHullPoints: number;
 }
 
 /** Read-only list as the client SDK exposes synchronized arrays. */
@@ -81,6 +83,11 @@ export interface SectorStateView {
   readonly ship: ShipView;
   readonly crew: {
     forEach(cb: (member: CrewMemberView, id: string) => void): void;
+    get(id: string): CrewMemberView | undefined;
     readonly size: number;
   };
+  /** 'active' | 'extracted' | 'destroyed' | 'timeout'; only set with extraction rules. */
+  readonly missionOutcome: string;
+  readonly evacuationCounting: boolean;
+  readonly evacuationSecondsLeft: number;
 }
