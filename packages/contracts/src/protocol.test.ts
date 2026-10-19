@@ -4,6 +4,7 @@ import {
   PROTOCOL_VERSION,
   parseCrewInput,
   parseEmptyPayload,
+  parseInventoryTransfer,
   parseJoinOptions,
   parseShipInput,
 } from './protocol';
@@ -56,5 +57,29 @@ describe('empty payloads and join options', () => {
       ok: false,
       code: ErrorCode.InvalidPayload,
     });
+  });
+});
+
+describe('inventory.transfer', () => {
+  it('accepts a stack, two places and a positive whole quantity', () => {
+    const payload = { item: 'loot_abc', from: 'container.2', to: 'backpack', quantity: 5 };
+    expect(parseInventoryTransfer(payload)).toEqual({ ok: true, value: payload });
+    expect(
+      parseInventoryTransfer({ item: 'x', from: 'backpack', to: 'cargo', quantity: 1 }).ok,
+    ).toBe(true);
+  });
+
+  it.each([
+    ['negative quantity', { item: 'x', from: 'cargo', to: 'backpack', quantity: -1 }],
+    ['zero quantity', { item: 'x', from: 'cargo', to: 'backpack', quantity: 0 }],
+    ['fractional quantity', { item: 'x', from: 'cargo', to: 'backpack', quantity: 1.5 }],
+    ['huge quantity', { item: 'x', from: 'cargo', to: 'backpack', quantity: 1e9 }],
+    ['another backpack', { item: 'x', from: 'backpack:acc-b', to: 'cargo', quantity: 1 }],
+    ['malformed container', { item: 'x', from: 'containerX1', to: 'cargo', quantity: 1 }],
+    ['client position', { item: 'x', from: 'cargo', to: 'backpack', quantity: 1, x: 0 }],
+    ['empty item', { item: '', from: 'cargo', to: 'backpack', quantity: 1 }],
+    ['long item', { item: 'x'.repeat(65), from: 'cargo', to: 'backpack', quantity: 1 }],
+  ])('rejects %s', (_label, payload) => {
+    expect(parseInventoryTransfer(payload)).toEqual({ ok: false, code: ErrorCode.InvalidPayload });
   });
 });

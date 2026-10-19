@@ -76,6 +76,17 @@ O stash é permanente; mochila e carga da nave são temporárias durante a miss�
 
 Antes da missão, o menu informa perda possível e regras de distribuição. Durante a partida, o HUD diferencia equipamento próprio, loot comum e itens de objetivo. Capacidade proposta: mochila de 8 slots e carga inicial de 24 slots, com empilhamento por tipo.
 
+**Coleta na 0.3 (V03.04).** Antes de existir EVA (0.5), a coleta acontece pela eclusa de carga, na popa da nave:
+
+- **Acesso:** um tripulante a pé na eclusa alcança o porão e, com o casco encostado num contêiner, o conteúdo desse contêiner.
+- **Movimentos:** ele pode mover itens entre o contêiner, a própria mochila (8 espaços) e o porão (24 espaços na Batedora, 40 na Cargueira). Contêineres só fornecem itens.
+- **Loot:** cada contêiner tem de 2 a 4 pilhas sorteadas da tabela `CONTAINER_LOOT` pela seed da missão, com IDs temporários aleatórios.
+- **Pilhas:** loot comum do mesmo item e da mesma origem se empilha até o limite do catálogo, e uma parte de uma pilha vira outra pilha com ID novo. A soma é sempre a original.
+- **Equipamento próprio:** o que veio do stash conserva o ID reservado e o dono, só se move inteiro, sem dividir nem juntar, e só o dono o move, mesmo depois de deixá-lo no porão. O equipamento dos espaços de arma e ferramenta fica equipado.
+- **Espaço:** um movimento que não cabe inteiro é recusado sem mudar nada.
+
+Por enquanto nada disso é gravado: a extração (V03.05) e a liquidação (V03.07) levarão esse estado ao stash.
+
 Se o stash estiver cheio ao extrair, itens vão para caixa de recebimento permanente. Falta de espaço nunca descarta uma recompensa já confirmada. A caixa tem controle de abuso e histórico; não substitui a capacidade normal para entrar equipado.
 
 ## Extração

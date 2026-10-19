@@ -1,9 +1,14 @@
+import { randomBytes } from 'node:crypto';
 import { type AuthContext, type Client, ServerError } from '@colyseus/core';
-import { isShipHullId } from '@orbit/catalog';
+import { type SectorDefinition, isShipHullId } from '@orbit/catalog';
 import {
+  ClientMessage,
+  ErrorCode,
   MISSION_CANCELLED_CLOSE_CODE,
   MISSION_ENDED_CLOSE_CODE,
   RoomPhase,
+  ServerMessage,
+  parseInventoryTransfer,
 } from '@orbit/contracts';
 import { errorName } from '../infrastructure/error-name';
 import type { MissionLifecycle } from '../modules/expedition/expedition-service';
@@ -12,7 +17,13 @@ import type {
   MissionTicket,
   MissionTicketStore,
 } from '../modules/mission/mission-directory';
-import { type SectorSeed, generateOpenSector, newSectorSeed } from '../simulation/sector-generator';
+import { MissionLoot } from '../simulation/mission-loot';
+import {
+  type SectorSeed,
+  generateContainerLoot,
+  generateOpenSector,
+  newSectorSeed,
+} from '../simulation/sector-generator';
 import { SectorSimulation } from '../simulation/sector-simulation';
 import { SectorRoom } from './sector-room';
 
@@ -24,6 +35,8 @@ export interface MissionRoomDeps {
   readonly directory: MissionDirectory;
   /** Private seed of each new sector; random unless a test fixes it. */
   readonly sectorSeed?: () => SectorSeed;
+  /** Builds the sector from the seed; tests replace it to place things on purpose. */
+  readonly generateSector?: (seed: SectorSeed) => SectorDefinition;
 }
 
 /** Set by the server when it creates the room; clients cannot create mission rooms. */
@@ -36,6 +49,9 @@ type MissionClient = Client<{ auth: MissionTicket }>;
 
 /** Wait before trying again an activation the database failed. */
 const ACTIVATION_RETRY_MS = 1000;
+
+/** Temporary ID of a loot stack: random, so it says nothing about other containers. */
+const lootId = () => `loot_${randomBytes(12).toString('base64url')}`;
 
 /**
  * The match of one expedition. Only its members enter, each with a single-use ticket
@@ -60,6 +76,11 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
   /** onCreate finished; before that an end only marks the room (it cannot close yet). */
   #ready = false;
   #closing = false;
+  #loot: MissionLoot | null = null;
+  /** What each session could reach when its inventory view was last sent. */
+  readonly #sentAccess = new Map<string, string>();
+  /** Last view sent to each session, to skip sending one that did not change. */
+  readonly #sentView = new Map<string, string>();
 
   /** Refuses everyone unless registered through `defineMissionRoom`. */
   static override async onAuth(
@@ -99,7 +120,17 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     }
     // The seed stays in this process: clients receive only the resulting geometry.
     const seed = (this.#deps.sectorSeed ?? newSectorSeed)();
-    this.startSector(new SectorSimulation(generateOpenSector(seed), roster.shipId));
+    const sector = (this.#deps.generateSector ?? generateOpenSector)(seed);
+    this.startSector(new SectorSimulation(sector, roster.shipId));
+    this.#loot = new MissionLoot({
+      simulation: this.simulation,
+      members: roster.members,
+      loot: generateContainerLoot(seed, sector.containers),
+      newId: lootId,
+    });
+    this.onMessage(ClientMessage.InventoryTransfer, (client: MissionClient, raw: unknown) =>
+      this.#transfer(client, raw),
+    );
     for (const member of roster.members) this.#roster.set(member.accountId, member.nick);
     this.maxClients = roster.members.length;
     // Not listed for matchmaking; joining needs this room's ID and a ticket for it.
@@ -128,6 +159,8 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     this.#seats.set(ticket.accountId, client.sessionId);
     this.addCrewMember(client.sessionId, this.#roster.get(ticket.accountId) ?? ticket.nick);
     this.syncState();
+    // The first view goes on the next tick (afterStep), once the client listens.
+    this.#forgetSent(client.sessionId);
     if (this.#seats.size === this.#roster.size) void this.#activate();
   }
 
@@ -141,8 +174,15 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     if (this.#activated) super.onDrop(client);
   }
 
+  override onReconnect(client: MissionClient): void {
+    super.onReconnect(client);
+    // Changes made while away arrive on the next tick.
+    this.#forgetSent(client.sessionId);
+  }
+
   override onLeave(client: MissionClient): void {
     super.onLeave(client);
+    this.#forgetSent(client.sessionId);
     const accountId = client.auth?.accountId;
     if (accountId && this.#seats.get(accountId) === client.sessionId) this.#seats.delete(accountId);
   }
@@ -159,6 +199,54 @@ export class MissionRoom extends SectorRoom<MissionTicket> {
     ending.catch((error: unknown) => {
       console.error(`[mission] não foi possível encerrar a expedição: ${errorName(error)}`);
     });
+  }
+
+  /** Walking to or away from the hatch, or the hull reaching a container, updates the view. */
+  protected override afterStep(): void {
+    const loot = this.#loot;
+    if (!loot) return;
+    for (const client of this.clients as MissionClient[]) {
+      if (this.#sentAccess.get(client.sessionId) !== loot.accessKey(client.sessionId)) {
+        this.#sendInventory(client);
+      }
+    }
+  }
+
+  #transfer(client: MissionClient, raw: unknown): void {
+    const parsed = parseInventoryTransfer(raw);
+    if (!parsed.ok) {
+      this.rejectInvalid(client, ClientMessage.InventoryTransfer, parsed.code);
+      return;
+    }
+    const accountId = client.auth?.accountId;
+    if (!this.#loot || !accountId) return;
+    // Nothing changes hands before everyone is aboard and the match is on.
+    const refusal = this.#activated
+      ? this.#loot.transfer(accountId, client.sessionId, parsed.value)
+      : ErrorCode.MatchNotActive;
+    if (refusal) {
+      this.notifyRefusal(client, ClientMessage.InventoryTransfer, refusal);
+      return;
+    }
+    // The hold and containers are shared: whoever's view changed gets it again.
+    for (const member of this.clients as MissionClient[]) this.#sendInventory(member);
+  }
+
+  /** Each member receives only their own view (docs/05): never someone else's backpack. */
+  #sendInventory(client: MissionClient): void {
+    const accountId = client.auth?.accountId;
+    if (!this.#loot || !accountId) return;
+    this.#sentAccess.set(client.sessionId, this.#loot.accessKey(client.sessionId));
+    const view = this.#loot.view(accountId, client.sessionId);
+    const serialized = JSON.stringify(view);
+    if (this.#sentView.get(client.sessionId) === serialized) return;
+    this.#sentView.set(client.sessionId, serialized);
+    client.send(ServerMessage.Inventory, view);
+  }
+
+  #forgetSent(sessionId: string): void {
+    this.#sentAccess.delete(sessionId);
+    this.#sentView.delete(sessionId);
   }
 
   /** Everyone loaded: the match starts if the preparation is still in time. */

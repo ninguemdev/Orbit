@@ -19,3 +19,32 @@ export interface MissionTicketResponse {
 export const MISSION_CANCELLED_CLOSE_CODE = 4410;
 /** Close code when the expedition ends while the player is in the room. */
 export const MISSION_ENDED_CLOSE_CODE = 4411;
+
+/** One stack as its viewer sees it during a mission. */
+export interface MissionItemView {
+  readonly id: string;
+  readonly itemId: string;
+  readonly quantity: number;
+  /** Nick of the member whose gear it is; null for common loot. */
+  readonly ownerNick: string | null;
+  /** The viewer's own gear. */
+  readonly mine: boolean;
+}
+
+export interface HolderView {
+  readonly slots: number;
+  readonly items: readonly MissionItemView[];
+}
+
+/**
+ * Sent to each member alone: their equipment and backpack, the ship's hold and, while
+ * they stand at the hatch with the hull alongside one, that container's contents.
+ * Other members' backpacks and unopened containers are never sent.
+ */
+export interface MissionInventoryView {
+  readonly atHatch: boolean;
+  readonly equipment: readonly MissionItemView[];
+  readonly backpack: HolderView;
+  readonly cargo: HolderView;
+  readonly container: (HolderView & { readonly id: string }) | null;
+}

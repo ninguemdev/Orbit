@@ -72,6 +72,7 @@ export abstract class SectorRoom<TAuth> extends Room<{
     this.setFixedTimestep((ctx) => {
       this.simulation.step(ctx.dt, this.now());
       this.syncState();
+      this.afterStep();
     }, TICK_RATE_HZ);
 
     this.onMessage(ClientMessage.CrewInput, (client, raw: unknown) => {
@@ -104,6 +105,9 @@ export abstract class SectorRoom<TAuth> extends Room<{
       this.rejectInvalid(client, String(type), ErrorCode.InvalidPayload);
     });
   }
+
+  /** Runs after every fixed step, once the state is synchronized. */
+  protected afterStep(): void {}
 
   /** Puts a crew member aboard the ship and in the synchronized state. */
   protected addCrewMember(sessionId: string, name: string): void {

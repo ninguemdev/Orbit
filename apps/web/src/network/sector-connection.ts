@@ -6,6 +6,7 @@ import {
   INPUT_SEND_RATE_HZ,
   INTERPOLATION_DELAY_MS,
   RoomPhase,
+  type MissionInventoryView,
   type MissionTicketResponse,
   PROTOCOL_VERSION,
   ServerMessage,
@@ -83,6 +84,7 @@ export class SectorConnection implements SectorBridge {
   #helmSeq = 0;
   #lastNotice: Notice | null = null;
   #layout: SectorLayout | null = null;
+  #inventory: MissionInventoryView | null = null;
   #closeCode: number | null = null;
   readonly #timers: ReturnType<typeof setInterval>[];
   readonly #statusListeners = new Set<(status: ConnectionStatus) => void>();
@@ -103,6 +105,10 @@ export class SectorConnection implements SectorBridge {
     });
     room.onMessage(ServerMessage.ActionRejected, (payload: ActionRejectedPayload) => {
       this.#lastNotice = { code: payload.code, at: performance.now() };
+    });
+    // Mission rooms send each member their own items; the test room never does.
+    room.onMessage(ServerMessage.Inventory, (view: MissionInventoryView) => {
+      this.#inventory = view;
     });
     this.#timers = [
       setInterval(() => room.ping((ms) => (this.#pingMs = ms)), PING_INTERVAL_MS),
@@ -163,6 +169,11 @@ export class SectorConnection implements SectorBridge {
 
   layout(): SectorLayout | null {
     return this.#layout;
+  }
+
+  /** Latest items this player can see in a mission; null outside missions. */
+  inventory(): MissionInventoryView | null {
+    return this.#inventory;
   }
 
   /** Recently received snapshots (about the last 1.5 s), for diagnostics. */

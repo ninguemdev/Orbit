@@ -4,7 +4,10 @@ import {
   CLASS_DESCRIPTIONS,
   CLASS_NAMES,
   CLASS_ORDER,
+  CONTAINER_LOOT,
   CREW,
+  ITEMS,
+  isItemId,
   ClassId,
   SECTORS,
   SHIP_HULLS,
@@ -24,8 +27,8 @@ describe('catalog consistency', () => {
   });
 
   for (const hull of Object.values(SHIP_HULLS)) {
-    it(`${hull.id}: spawns and helm seat are walkable`, () => {
-      const points = [...hull.crewSpawns, hull.helm.seat];
+    it(`${hull.id}: spawns, helm seat and cargo hatch are walkable`, () => {
+      const points = [...hull.crewSpawns, hull.helm.seat, hull.cargoHatch.position];
       for (const point of points) {
         for (const wall of hull.interiorWalls) {
           expect(resolveCircleRect(point, CREW.radius, wall)).toEqual(point);
@@ -55,6 +58,20 @@ describe('catalog consistency', () => {
       }
     });
   }
+});
+
+describe('container loot', () => {
+  it('draws only catalog items, each in a single stack', () => {
+    expect(CONTAINER_LOOT.stacks.min).toBeGreaterThan(0);
+    expect(CONTAINER_LOOT.stacks.max).toBeGreaterThanOrEqual(CONTAINER_LOOT.stacks.min);
+    for (const entry of CONTAINER_LOOT.table) {
+      expect(isItemId(entry.itemId)).toBe(true);
+      expect(entry.weight).toBeGreaterThan(0);
+      expect(entry.min).toBeGreaterThan(0);
+      expect(entry.max).toBeGreaterThanOrEqual(entry.min);
+      expect(entry.max).toBeLessThanOrEqual(ITEMS[entry.itemId].maxStack);
+    }
+  });
 });
 
 describe('ship order', () => {

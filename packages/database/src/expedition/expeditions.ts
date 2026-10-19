@@ -446,6 +446,8 @@ export interface ExpeditionRoster {
     readonly accountId: string;
     readonly nick: string;
     readonly classId: string;
+    /** Items reserved for the member, as recorded at the start: they enter the match. */
+    readonly loadout: readonly ReservedItem[];
   }[];
 }
 
@@ -471,12 +473,18 @@ export async function getExpeditionRoster(
           accountId: expeditionMembers.accountId,
           nick: accounts.nick,
           classId: expeditionMembers.classId,
+          loadout: expeditionMembers.loadout,
         })
         .from(expeditionMembers)
         .innerJoin(accounts, eq(accounts.id, expeditionMembers.accountId))
         .where(eq(expeditionMembers.expeditionId, expeditionId))
         .orderBy(asc(accounts.nickNormalized));
-      return { expeditionId, ...row, state: row.state as ExpeditionState, members };
+      return {
+        expeditionId,
+        ...row,
+        state: row.state as ExpeditionState,
+        members: members.map((member) => ({ ...member, loadout: reservedItems(member.loadout) })),
+      };
     },
     { isolationLevel: 'repeatable read', accessMode: 'read only' },
   );
@@ -572,4 +580,23 @@ export async function getActiveExpedition(
     },
     { isolationLevel: 'repeatable read', accessMode: 'read only' },
   );
+}
+
+/** Reads the loadout snapshot written by `startExpedition`. */
+function reservedItems(snapshot: unknown): ReservedItem[] {
+  if (!Array.isArray(snapshot)) throw new Error('Snapshot de loadout inválido');
+  return snapshot.map((entry: unknown) => {
+    const { slot, instanceId, itemId, quantity } = (entry ?? {}) as Record<string, unknown>;
+    if (
+      typeof slot !== 'string' ||
+      typeof instanceId !== 'string' ||
+      typeof itemId !== 'string' ||
+      typeof quantity !== 'number' ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      throw new Error('Snapshot de loadout inválido');
+    }
+    return { slot, instanceId, itemId, quantity };
+  });
 }
