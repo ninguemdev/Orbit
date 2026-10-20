@@ -11,14 +11,15 @@ const SPEED_LIMIT = HULL.handling.maxSpeed * EXTRACTION.maxSpeedFraction;
 // those — a budget the external kill enforces regardless of what Playwright's own
 // test.setTimeout says, and without a clean error. So the two missions below, worst case
 // (every attempt of both exhausting its own flight deadline), must fit well inside the
-// remainder. A normal flight was measured taking up to ~90s (potential-field steering
-// through a dense, ~60-asteroid sector is not a straight line), so this has real slack
-// above that, not just above the theoretical straight-line minimum.
-const FLIGHT_DEADLINE_MS = 150_000;
+// remainder. flyToZone follows a precomputed, collision-free route rather than reacting
+// to obstacles turn by turn (see its own doc comment), with real margin built into that
+// route for the server's own sweep-based collision check — real but not unlimited slack,
+// so this favours giving each attempt real room over having many of them.
+const FLIGHT_DEADLINE_MS = 240_000;
 // A hostile seed is accepted game variance (see runMission), not a bug, so a failed
 // flight retries with a fresh sector; bounded so a run of bad luck still terminates (and
 // stays inside the CI job budget above: see FLIGHT_DEADLINE_MS).
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 2;
 // Slack per attempt beyond the flight itself: ready-up, confirm, walk to the helm, the
 // evacuation wait, and the menu transition. Keeps this above the retry loop's own worst
 // case so a pathological run surfaces runMission's diagnostic error instead of a bare
@@ -255,8 +256,11 @@ function simplifyPath(
   obstacles: readonly Zone[],
   shipRadius: number,
 ): Point[] {
+  // At least findPath's own grid margin (CELL*sqrt2/2 there): a shortcut must never be
+  // tighter than the grid route it replaces, or simplifying it away is exactly what
+  // erodes the clearance the search was careful to keep.
   const clear = (a: Point, b: Point) =>
-    obstacles.every((o) => distanceToSegment(o, a, b) >= o.radius + shipRadius + 40);
+    obstacles.every((o) => distanceToSegment(o, a, b) >= o.radius + shipRadius + 100);
   const result: Point[] = [path[0] as Point];
   let i = 0;
   while (i < path.length - 1) {
@@ -293,7 +297,11 @@ async function flyToZone(
   bounds: Bounds,
 ): Promise<'reached' | 'disconnected' | 'gave-up'> {
   const fitRadius = zone.radius - HULL.handling.radius;
-  const shipClearance = HULL.handling.radius + 60;
+  // Beyond the hull's own radius: the server resolves collision by sweeping the actual
+  // move within its tick, not just checking the position after it, so a fast ship can
+  // still close a narrow gap between two samples here — this pads the route itself
+  // against that, rather than trying to react to it in time once already that close.
+  const shipClearance = HULL.handling.radius + 120;
   const start = (await world(page))?.ship;
   if (!start) return 'disconnected';
   const rawPath = findPath(bounds, asteroids, shipClearance, start, zone, fitRadius * 0.6);
@@ -302,6 +310,21 @@ async function flyToZone(
     ...simplifyPath(rawPath, asteroids, shipClearance).slice(1),
     { x: zone.x, y: zone.y },
   ];
+  // How sharp the turn at each waypoint will be (0 straight through, 1 a full reversal):
+  // the route is a sequence of positions, not headings, so nothing stops the ship
+  // arriving at one still carrying speed from the leg before it — a sharp turn needs
+  // braking well before the waypoint itself, not only once already close to or turning
+  // on it, or momentum carries it past the safe corridor the route was built for.
+  const points = [start, ...waypoints];
+  const turnSeverity = waypoints.map((_, i) => {
+    if (i === waypoints.length - 1) return 0;
+    const prev = points[i] as Point;
+    const cur = points[i + 1] as Point;
+    const next = points[i + 2] as Point;
+    const inHeading = Math.atan2(cur.y - prev.y, cur.x - prev.x);
+    const outHeading = Math.atan2(next.y - cur.y, next.x - cur.x);
+    return Math.abs(wrapAngle(outHeading - inHeading)) / Math.PI;
+  });
 
   let thrustKey: 'KeyW' | 'KeyS' | null = null;
   let turnKey: 'KeyA' | 'KeyD' | null = null;
@@ -352,19 +375,56 @@ async function flyToZone(
       const dy = target.y - y;
       const distanceToTarget = Math.hypot(dx, dy);
       const diff = wrapAngle(Math.atan2(dy, dx) - angle);
-      const wantTurn: 1 | -1 | 0 = Math.abs(diff) < 0.08 ? 0 : diff > 0 ? 1 : -1;
+      let wantTurn: 1 | -1 | 0 = Math.abs(diff) < 0.08 ? 0 : diff > 0 ? 1 : -1;
 
       const lastLeg = waypointIndex === waypoints.length - 1;
       const approaching = lastLeg && distanceToZone < fitRadius + 2500;
+      const severity = turnSeverity[waypointIndex] as number;
+      // How far before the waypoint to start slowing for its turn: only this close, not
+      // for the whole leg — cruising a long, straight approach at a sharp turn's speed
+      // the entire way there wastes most of the flight's budget for no safety gain.
+      const brakingDistance = 300 + severity * 1500;
       const speedCap = Math.min(
-        // A sharp turn ahead slows down regardless of distance: cutting it at speed is
-        // exactly how the old reactive steering grazed a neighbour while correcting late.
-        HULL.handling.maxSpeed * (Math.abs(diff) > 0.6 ? 0.5 : 0.85),
+        HULL.handling.maxSpeed * 0.85,
+        // A sharp turn ahead slows down well before reaching it (see turnSeverity above),
+        // not only once already close to or turning on it: cutting it at speed is exactly
+        // how the old reactive steering grazed a neighbour while correcting late, and
+        // arriving at a waypoint still carrying speed from the leg before it drifts the
+        // ship past the corridor the route was built for.
+        severity > 0.15 && distanceToTarget < brakingDistance
+          ? HULL.handling.maxSpeed * Math.max(0.25, 0.85 - severity)
+          : Infinity,
+        Math.abs(diff) > 0.6 ? HULL.handling.maxSpeed * 0.5 : Infinity,
         Math.max(80, distanceToTarget - 100),
         approaching ? SPEED_LIMIT * 1.3 : Infinity,
       );
-      const wantThrust: 1 | -1 | 0 =
+      let wantThrust: 1 | -1 | 0 =
         speed > speedCap ? -1 : speed < speedCap * 0.85 && Math.abs(diff) < 1.2 ? 1 : 0;
+
+      // Last-resort net, independent of the planned route: the route only guarantees
+      // ~85 units of hull clearance along it (findPath's own margin), not that momentum
+      // never carries the ship outside that corridor, so this is a genuine emergency
+      // threshold, well inside that normal operating clearance, not a routine one — it
+      // must never settle for just slowing down once close, which would permanently
+      // strand the ship near any ordinary waypoint hugging that same ~85-unit margin:
+      // it keeps moving, away from the threat, until actually clear of it.
+      let nearestGap = Infinity;
+      let nearestBearing = 0;
+      for (const asteroid of asteroids) {
+        const adx = asteroid.x - x;
+        const ady = asteroid.y - y;
+        const adist = Math.hypot(adx, ady);
+        const gap = adist - asteroid.radius - HULL.handling.radius;
+        if (gap < nearestGap) {
+          nearestGap = gap;
+          nearestBearing = Math.atan2(ady, adx);
+        }
+      }
+      if (nearestGap < 80) {
+        wantThrust = speed < 80 ? 1 : speed > 140 ? -1 : 0;
+        const awayDiff = wrapAngle(nearestBearing + Math.PI - angle);
+        wantTurn = Math.abs(awayDiff) < 0.1 ? 0 : awayDiff > 0 ? 1 : -1;
+      }
 
       const nextTurnKey = wantTurn === 0 ? null : wantTurn > 0 ? 'KeyD' : 'KeyA';
       if (nextTurnKey !== turnKey) {
