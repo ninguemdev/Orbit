@@ -28,6 +28,9 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${WEB_PORT}`,
     trace: 'retain-on-failure',
+    // A locator action (click, textContent, ...) has no timeout of its own otherwise —
+    // it would wait out the whole test timeout instead of failing with a clear error.
+    actionTimeout: 15_000,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [

@@ -3,12 +3,20 @@ import { CREW, EXTRACTION, SHIP_HULLS, ShipHullId } from '@orbit/catalog';
 import { closeOpenContexts, signUpInNewContext } from './support/accounts';
 
 test.afterEach(closeOpenContexts);
-// Two real flights to a randomly seeded extraction zone, plus two evacuations, with
-// retries for a rare hostile seed (see runMission).
-test.setTimeout(600_000);
 
 const HULL = SHIP_HULLS[ShipHullId.Scout];
 const SPEED_LIMIT = HULL.handling.maxSpeed * EXTRACTION.maxSpeedFraction;
+// flyToZone's own patience per attempt; see runMission for the retry budget this sizes.
+const FLIGHT_DEADLINE_MS = 180_000;
+// A hostile seed is accepted game variance (see runMission), not a bug, so a failed
+// flight retries with a fresh sector; bounded so a run of bad luck still terminates.
+const MAX_ATTEMPTS = 3;
+// Generous slack per attempt beyond the flight itself: ready-up, confirm, walk to the
+// helm, the evacuation wait, and the menu transition. Keeps this above the retry loop's
+// own worst case so a pathological run surfaces runMission's diagnostic error instead of
+// a bare Playwright timeout.
+const PER_ATTEMPT_OVERHEAD_MS = 60_000;
+test.setTimeout(2 * MAX_ATTEMPTS * (FLIGHT_DEADLINE_MS + PER_ATTEMPT_OVERHEAD_MS));
 
 interface ShipState {
   readonly x: number;
@@ -57,10 +65,27 @@ async function ensureReady(page: Page) {
   }).toPass();
 }
 
+/** Waits until two readings of the authoritative position agree: the member stopped. */
+async function untilStill(page: Page, id: string) {
+  const read = async () => (await world(page))?.crew[id];
+  let last = await read();
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(100);
+    const now = await read();
+    if (!last || !now) return;
+    if (Math.hypot(now.x - last.x, now.y - last.y) < 0.5) return;
+    last = now;
+  }
+}
+
 /**
  * Walks the pilot's own crew member to a ship-local target with key pulses (same
  * technique as tests/e2e/mission-loot.spec.ts): holding a key while polling overshoots
- * on a slow CI, so each pulse learns the extra movement of the last one.
+ * on a slow CI, so each pulse learns the extra movement of the last one. Waits for the
+ * authoritative position to settle before measuring it — on a slow CI the server's
+ * stop can land after the key is released, and measuring too early would understate
+ * the overshoot and undercorrect the next pulse.
  */
 async function walkTo(page: Page, target: { x: number; y: number }, arrivedRadius: number) {
   const id = await sessionId(page);
@@ -88,7 +113,7 @@ async function walkTo(page: Page, target: { x: number; y: number }, arrivedRadiu
     for (const key of keys) await page.keyboard.down(key);
     await page.waitForTimeout(holdMs);
     for (const key of keys) await page.keyboard.up(key);
-    await page.waitForTimeout(100);
+    await untilStill(page, id);
     const after = (await world(page))?.crew[id];
     if (!after) throw new Error('estado ausente');
     const movedMs = (Math.hypot(after.x - self.x, after.y - self.y) / CREW.walkSpeed) * 1000;
@@ -137,7 +162,7 @@ async function flyToZone(
   let bestDistanceAt = Date.now();
   let escapeUntil = 0;
   let escapeTurn: 1 | -1 = 1;
-  const deadline = Date.now() + 180_000;
+  const deadline = Date.now() + FLIGHT_DEADLINE_MS;
 
   try {
     for (;;) {
@@ -264,16 +289,17 @@ async function waitForEvacuation(page: Page): Promise<'done' | 'cancelled'> {
  * retries with a freshly seeded sector rather than failing the test outright.
  */
 async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: string) {
-  const maxAttempts = 5;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     await ensureReady(alfa);
     await ensureReady(bravo);
     await alfa.getByRole('button', { name: 'Confirmar preparação' }).click();
-    for (const page of [alfa, bravo]) {
-      await expect(page.getByTestId('game').locator('canvas')).toBeVisible();
-      await expect(page.getByTestId('hud')).toContainText(alfaNick);
-      await expect(page.getByTestId('hud')).toContainText(bravoNick);
-    }
+    await Promise.all(
+      [alfa, bravo].map(async (page) => {
+        await expect(page.getByTestId('game').locator('canvas')).toBeVisible();
+        await expect(page.getByTestId('hud')).toContainText(alfaNick);
+        await expect(page.getByTestId('hud')).toContainText(bravoNick);
+      }),
+    );
 
     await expect.poll(() => layout(alfa).then((l) => l?.extractionZones?.length ?? 0)).toBe(1);
     const sector = await layout(alfa);
@@ -287,6 +313,15 @@ async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: 
     await expect.poll(() => world(alfa).then((w) => w?.ship.operatorId)).toBe(alfaId);
 
     const flightOutcome = await flyToZone(alfa, zone, asteroids);
+    // Only a resolved outcome (reached and evacuated, or the mission ending on its own
+    // terms) settles for real before MissionRoom#settled lets the room close — the
+    // database write is already committed by the time the client is back here. A
+    // voluntary leave (gave up, or cancelled mid-evacuation) is a technical abort
+    // instead: the room closes the moment the last socket does, via Colyseus'
+    // autoDispose, and only then does MissionRoom#onDispose fire that write, as
+    // fire-and-forget. Reading mission-result right after a voluntary leave would
+    // therefore race its own commit.
+    let guaranteedSettled = false;
     if (flightOutcome === 'reached') {
       const extractButton = alfa.getByTestId('request-extraction');
       // The HUD polls server state on its own 200 ms cadence; give it a moment to catch
@@ -295,46 +330,78 @@ async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: 
       await extractButton.click();
       await expect(alfa.getByTestId('evacuation-countdown')).toBeVisible();
       if ((await waitForEvacuation(alfa)) === 'cancelled') {
-        for (const page of [alfa, bravo]) {
-          await page
-            .getByRole('button', { name: 'Sair da missão' })
-            .click()
-            .catch(() => undefined);
-        }
+        await Promise.all(
+          [alfa, bravo].map((page) =>
+            page
+              .getByRole('button', { name: 'Sair da missão' })
+              .click()
+              .catch(() => undefined),
+          ),
+        );
+      } else {
+        guaranteedSettled = true;
       }
     } else if (flightOutcome === 'gave-up') {
       // The mission is still active server-side (its own timeout is 20 minutes) —
       // leave deliberately so this attempt ends now instead of outlasting the test.
-      for (const page of [alfa, bravo]) {
-        await page.getByRole('button', { name: 'Sair da missão' }).click();
-      }
+      await Promise.all(
+        [alfa, bravo].map((page) => page.getByRole('button', { name: 'Sair da missão' }).click()),
+      );
     }
+    // flightOutcome === 'disconnected' falls through with guaranteedSettled left false:
+    // it could be a resolved outcome (the ship was destroyed) or a genuinely dropped
+    // connection, and the two cannot be told apart from here.
 
-    for (const page of [alfa, bravo]) {
-      await expect(page.getByTestId('signed-in-as')).toBeVisible({ timeout: 30_000 });
+    await Promise.all(
+      [alfa, bravo].map((page) =>
+        expect(page.getByTestId('signed-in-as')).toBeVisible({ timeout: 30_000 }),
+      ),
+    );
+
+    const result = alfa.getByTestId('mission-result');
+    let resultText = '';
+    if (guaranteedSettled) {
+      await expect(result).toBeVisible({ timeout: 10_000 });
+      resultText = (await result.textContent()) ?? '';
+    } else {
+      // Not guaranteed to be there yet (see above): wait a little anyway, since it
+      // usually already is, but treat it missing as "not extracted" rather than
+      // racing the commit for an answer.
+      const appeared = await result
+        .waitFor({ state: 'visible', timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (appeared) resultText = (await result.textContent()) ?? '';
     }
-    const resultText = (await alfa.getByTestId('mission-result').textContent()) ?? '';
     const extracted = resultText.includes('Extração concluída.');
     if (extracted) {
-      for (const page of [alfa, bravo]) {
-        // Only the success notice reads "A missão terminou." — a technical abort
-        // reads "A missão terminou sem extração...", a different sentence entirely.
-        await expect(page.getByTestId('party-notice')).toContainText('A missão terminou.');
-        const result = page.getByTestId('mission-result');
-        await expect(result).toContainText('Extração concluída.');
-        // The stash list itself only renders once it has an item; the inventory panel
-        // around it is always present, empty loadouts included.
-        await expect(page.getByTestId('inventory')).not.toContainText('(reservado)');
-        await expect(page.getByTestId('expedition-preparing')).toHaveCount(0);
-        await result.getByRole('button', { name: 'Dispensar' }).click();
-      }
+      await Promise.all(
+        [alfa, bravo].map(async (page) => {
+          // Only the success notice reads "A missão terminou." — a technical abort
+          // reads "A missão terminou sem extração...", a different sentence entirely.
+          await expect(page.getByTestId('party-notice')).toContainText('A missão terminou.');
+          const page_result = page.getByTestId('mission-result');
+          await expect(page_result).toContainText('Extração concluída.');
+          // The stash list itself only renders once it has an item; the inventory panel
+          // around it is always present, empty loadouts included.
+          await expect(page.getByTestId('inventory')).not.toContainText('(reservado)');
+          await expect(page.getByTestId('expedition-preparing')).toHaveCount(0);
+          await page_result.getByRole('button', { name: 'Dispensar' }).click();
+        }),
+      );
       return;
     }
-    for (const page of [alfa, bravo]) {
-      await page.getByTestId('mission-result').getByRole('button', { name: 'Dispensar' }).click();
-    }
-    if (attempt === maxAttempts) {
-      throw new Error(`a nave não extraiu em ${maxAttempts} tentativas (última: "${resultText}")`);
+    await Promise.all(
+      [alfa, bravo].map((page) =>
+        page
+          .getByTestId('mission-result')
+          .getByRole('button', { name: 'Dispensar' })
+          .click()
+          .catch(() => undefined),
+      ),
+    );
+    if (attempt === MAX_ATTEMPTS) {
+      throw new Error(`a nave não extraiu em ${MAX_ATTEMPTS} tentativas (última: "${resultText}")`);
     }
   }
 }
