@@ -43,6 +43,12 @@ interface Zone {
   readonly y: number;
   readonly radius: number;
 }
+interface Bounds {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
 
 const world = (page: Page) =>
   page.evaluate(() => window.__orbit?.latest() as MissionWorld | null | undefined);
@@ -50,7 +56,7 @@ const layout = (page: Page) =>
   page.evaluate(
     () =>
       window.__orbit?.layout() as
-        { extractionZones: Zone[]; asteroids: readonly Zone[] } | null | undefined,
+        { bounds: Bounds; extractionZones: Zone[]; asteroids: readonly Zone[] } | null | undefined,
   );
 const sessionId = (page: Page) => page.evaluate(() => window.__orbit?.sessionId ?? '');
 
@@ -130,29 +136,173 @@ async function walkTo(page: Page, target: { x: number; y: number }, arrivedRadiu
   throw new Error('não chegou ao destino');
 }
 
+type Point = { readonly x: number; readonly y: number };
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const lenSq = abx * abx + aby * aby;
+  if (lenSq === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / lenSq));
+  return Math.hypot(p.x - (a.x + t * abx), p.y - (a.y + t * aby));
+}
+
 /**
- * Pilots the ship to the extraction zone. The server only guarantees *some* route
- * exists between asteroids (found by grid search), not that a straight line is clear,
- * so steering combines three things every 100ms:
- *  - attraction to the zone and repulsion from nearby asteroids, blended as same-scale
- *    unit vectors (the raw distance-to-goal vector would otherwise swamp the repulsion
- *    far from it);
- *  - a forward-looking speed cap, tied to clearance directly ahead, as the actual
- *    safety net — independent of how well the steering reacted this instant;
- *  - a stall escape: if distance-to-goal hasn't improved in 6s (a potential-field local
- *    minimum against one obstacle), turn hard for 3s before resuming normal steering.
- * Returns 'reached' once in the zone under the evacuation speed limit, 'disconnected'
- * if the mission state disappears first (ship destroyed, server-side mission timeout —
- * the real one is 20 minutes, not this function's budget), or 'gave-up' if this
- * function's own patience runs out while the mission is still active — the caller must
- * then actively leave, since the server will otherwise keep the mission running.
+ * Grid BFS from `start` to within `goalRadius` of `goal`, keeping a ship of `shipRadius`
+ * at least a cell's half-diagonal away from every obstacle — the exact technique the
+ * server itself uses to guarantee a mission is only ever offered with a flyable route
+ * (apps/server/src/simulation/sector-generator.ts, findRoutes), re-run here for the real
+ * ship rather than trusting a straight line, or a reactive potential field, to find one:
+ * the latter got stuck in local minima against a dense cluster and sometimes grazed an
+ * asteroid outright, worse still under a real browser's slower round-trip per decision.
+ */
+function findPath(
+  bounds: Bounds,
+  obstacles: readonly Zone[],
+  shipRadius: number,
+  start: Point,
+  goal: Point,
+  goalRadius: number,
+): Point[] | null {
+  const CELL = 120;
+  const margin = (CELL * Math.SQRT2) / 2;
+  const columns = Math.max(1, Math.floor((bounds.maxX - bounds.minX) / CELL));
+  const rows = Math.max(1, Math.floor((bounds.maxY - bounds.minY) / CELL));
+  const toColumn = (px: number) =>
+    Math.min(columns - 1, Math.max(0, Math.floor((px - bounds.minX) / CELL)));
+  const toRow = (py: number) =>
+    Math.min(rows - 1, Math.max(0, Math.floor((py - bounds.minY) / CELL)));
+  const center = (cell: number): Point => ({
+    x: bounds.minX + ((cell % columns) + 0.5) * CELL,
+    y: bounds.minY + (Math.floor(cell / columns) + 0.5) * CELL,
+  });
+  const cellsWithin = (point: Point, radius: number): number[] => {
+    const cells: number[] = [];
+    for (let row = toRow(point.y - radius); row <= toRow(point.y + radius); row++) {
+      for (
+        let column = toColumn(point.x - radius);
+        column <= toColumn(point.x + radius);
+        column++
+      ) {
+        const cell = row * columns + column;
+        if (Math.hypot(center(cell).x - point.x, center(cell).y - point.y) <= radius) {
+          cells.push(cell);
+        }
+      }
+    }
+    return cells;
+  };
+
+  const free = new Uint8Array(columns * rows);
+  for (let cell = 0; cell < free.length; cell++) {
+    const point = center(cell);
+    free[cell] =
+      point.x >= bounds.minX + shipRadius &&
+      point.x <= bounds.maxX - shipRadius &&
+      point.y >= bounds.minY + shipRadius &&
+      point.y <= bounds.maxY - shipRadius
+        ? 1
+        : 0;
+  }
+  for (const obstacle of obstacles) {
+    const reach = obstacle.radius + shipRadius + margin;
+    for (const cell of cellsWithin(obstacle, reach)) {
+      if (Math.hypot(center(cell).x - obstacle.x, center(cell).y - obstacle.y) < reach) {
+        free[cell] = 0;
+      }
+    }
+  }
+
+  const startCell = toRow(start.y) * columns + toColumn(start.x);
+  if (!free[startCell]) return null;
+  const parent = new Int32Array(free.length).fill(-1);
+  parent[startCell] = startCell;
+  const queue = [startCell];
+  for (let head = 0; head < queue.length; head++) {
+    const cell = queue[head] as number;
+    const column = cell % columns;
+    const row = Math.floor(cell / columns);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nextColumn = column + dx;
+        const nextRow = row + dy;
+        if (nextColumn < 0 || nextColumn >= columns || nextRow < 0 || nextRow >= rows) continue;
+        const next = nextRow * columns + nextColumn;
+        if (!free[next] || parent[next] !== -1) continue;
+        parent[next] = cell;
+        queue.push(next);
+      }
+    }
+  }
+
+  const target = cellsWithin(goal, goalRadius).find((cell) => parent[cell] !== -1);
+  if (target === undefined) return null;
+  const cells: number[] = [target];
+  for (let cell = target; cell !== startCell; cell = parent[cell] as number) {
+    cells.push(parent[cell] as number);
+  }
+  return [start, ...cells.reverse().map(center)];
+}
+
+/**
+ * Skips ahead to the farthest waypoint with a clear line of sight, so the ship flies the
+ * route's shape, not its every grid cell: a straight run between two cells the search
+ * never compared directly needs its own clearance check against each obstacle.
+ */
+function simplifyPath(
+  path: readonly Point[],
+  obstacles: readonly Zone[],
+  shipRadius: number,
+): Point[] {
+  const clear = (a: Point, b: Point) =>
+    obstacles.every((o) => distanceToSegment(o, a, b) >= o.radius + shipRadius + 40);
+  const result: Point[] = [path[0] as Point];
+  let i = 0;
+  while (i < path.length - 1) {
+    let next = i + 1;
+    for (let j = path.length - 1; j > i + 1; j--) {
+      if (clear(path[i] as Point, path[j] as Point)) {
+        next = j;
+        break;
+      }
+    }
+    result.push(path[next] as Point);
+    i = next;
+  }
+  return result;
+}
+
+/**
+ * Pilots the ship to the extraction zone along a precomputed, collision-free route
+ * (findPath/simplifyPath above) instead of reacting turn by turn to nearby asteroids —
+ * see findPath for why. Steering only has to not cut a waypoint's corner, not avoid
+ * anything, which is a far easier (and more reliable) problem than general avoidance.
+ * Returns 'reached' once in the zone under the evacuation speed limit, 'disconnected' if
+ * the mission state disappears first (ship destroyed, server-side mission timeout — the
+ * real one is 20 minutes, not this function's budget), or 'gave-up' if this function's
+ * own patience runs out while the mission is still active, or no route was found at all
+ * (should not happen: the server already guarantees one for a ship this size or larger
+ * before offering the mission) — the caller must then actively leave, since the server
+ * will otherwise keep the mission running.
  */
 async function flyToZone(
   page: Page,
   zone: Zone,
   asteroids: readonly Zone[],
+  bounds: Bounds,
 ): Promise<'reached' | 'disconnected' | 'gave-up'> {
   const fitRadius = zone.radius - HULL.handling.radius;
+  const shipClearance = HULL.handling.radius + 60;
+  const start = (await world(page))?.ship;
+  if (!start) return 'disconnected';
+  const rawPath = findPath(bounds, asteroids, shipClearance, start, zone, fitRadius * 0.6);
+  if (!rawPath) return 'gave-up';
+  const waypoints: Point[] = [
+    ...simplifyPath(rawPath, asteroids, shipClearance).slice(1),
+    { x: zone.x, y: zone.y },
+  ];
+
   let thrustKey: 'KeyW' | 'KeyS' | null = null;
   let turnKey: 'KeyA' | 'KeyD' | null = null;
   const setKey = async (key: string, down: boolean) => {
@@ -166,10 +316,7 @@ async function flyToZone(
     turnKey = null;
   };
 
-  let bestDistance = Infinity;
-  let bestDistanceAt = Date.now();
-  let escapeUntil = 0;
-  let escapeTurn: 1 | -1 = 1;
+  let waypointIndex = 0;
   const deadline = Date.now() + FLIGHT_DEADLINE_MS;
 
   try {
@@ -178,81 +325,46 @@ async function flyToZone(
       const state = await world(page);
       if (!state) return 'disconnected';
       const { x, y, angle, vx, vy } = state.ship;
-      const dx = zone.x - x;
-      const dy = zone.y - y;
-      const distance = Math.hypot(dx, dy);
+      const distanceToZone = Math.hypot(zone.x - x, zone.y - y);
       const speed = Math.hypot(vx, vy);
       // Comfortably inside the zone and nearly stopped, not merely under the limit at
       // this instant: residual velocity otherwise keeps carrying the ship in a straight
       // line and can drift it back out (or over the limit) during the 10s evacuation
       // countdown, which cancels it — see the cancellation handling in runMission.
-      if (distance <= fitRadius * 0.7 && speed <= SPEED_LIMIT * 0.5) {
+      if (distanceToZone <= fitRadius * 0.7 && speed <= SPEED_LIMIT * 0.5) {
         await release();
         return 'reached';
       }
 
-      let wantThrust: 1 | -1 | 0;
-      let wantTurn: 1 | -1 | 0;
-      const now = Date.now();
-      if (distance < bestDistance - 150) {
-        bestDistance = distance;
-        bestDistanceAt = now;
-      } else if (now - bestDistanceAt > 6000 && now >= escapeUntil) {
-        escapeUntil = now + 3000;
-        escapeTurn = escapeTurn === 1 ? -1 : 1;
-        bestDistanceAt = now;
+      // Skip any waypoint already close enough, possibly more than one if a turn cut a
+      // corner — never step back to one already behind.
+      while (
+        waypointIndex < waypoints.length - 1 &&
+        Math.hypot(
+          (waypoints[waypointIndex] as Point).x - x,
+          (waypoints[waypointIndex] as Point).y - y,
+        ) < 250
+      ) {
+        waypointIndex++;
       }
-      // The ahead-gap scan (and the speed cap it drives) always runs, escaping or not:
-      // escape used to steer blindly on a fixed heading for a full 3s with no braking at
-      // all, which a dense field (dozens of asteroids) punished repeatedly — the hull
-      // ground down over many corrections, stuck escaping the same cluster, because nothing
-      // slowed the ship down while it blindly turned past a neighbour. A wider margin than
-      // the offline-tuned value, and over a wider arc than "directly ahead" too: a real
-      // browser round-trip per decision runs well past the nominal 100ms wait below (worse
-      // yet on CI), so a close neighbour can become ahead by the time the next correction
-      // lands.
-      let aimX = dx / distance;
-      let aimY = dy / distance;
-      let aheadGap = Infinity;
-      for (const asteroid of asteroids) {
-        const adx = asteroid.x - x;
-        const ady = asteroid.y - y;
-        const adist = Math.hypot(adx, ady);
-        const danger = asteroid.radius + HULL.handling.radius + 1800;
-        if (adist > 0 && adist < danger) {
-          const weight = ((danger - adist) / danger) ** 2 * 1.5;
-          aimX += (-adx / adist) * weight;
-          aimY += (-ady / adist) * weight;
-        }
-        if (adist > 4500) continue;
-        const bearing = Math.atan2(ady, adx);
-        if (Math.abs(wrapAngle(bearing - angle)) > 1.0) continue;
-        const gap = adist - asteroid.radius - HULL.handling.radius;
-        if (gap < aheadGap) aheadGap = gap;
-      }
-      const approaching = distance < fitRadius + 2500;
+      const target = waypoints[waypointIndex] as Point;
+      const dx = target.x - x;
+      const dy = target.y - y;
+      const distanceToTarget = Math.hypot(dx, dy);
+      const diff = wrapAngle(Math.atan2(dy, dx) - angle);
+      const wantTurn: 1 | -1 | 0 = Math.abs(diff) < 0.08 ? 0 : diff > 0 ? 1 : -1;
+
+      const lastLeg = waypointIndex === waypoints.length - 1;
+      const approaching = lastLeg && distanceToZone < fitRadius + 2500;
       const speedCap = Math.min(
-        HULL.handling.maxSpeed * 0.85,
-        Math.max(60, aheadGap - 350),
+        // A sharp turn ahead slows down regardless of distance: cutting it at speed is
+        // exactly how the old reactive steering grazed a neighbour while correcting late.
+        HULL.handling.maxSpeed * (Math.abs(diff) > 0.6 ? 0.5 : 0.85),
+        Math.max(80, distanceToTarget - 100),
         approaching ? SPEED_LIMIT * 1.3 : Infinity,
       );
-
-      if (now < escapeUntil) {
-        wantTurn = escapeTurn;
-        const escapeSpeedCap = Math.min(speedCap, HULL.handling.maxSpeed * 0.45);
-        wantThrust =
-          speed < Math.min(escapeSpeedCap, HULL.handling.maxSpeed * 0.3)
-            ? 1
-            : speed > escapeSpeedCap
-              ? -1
-              : 0;
-      } else {
-        const diff = wrapAngle(Math.atan2(aimY, aimX) - angle);
-        wantTurn = Math.abs(diff) < 0.08 ? 0 : diff > 0 ? 1 : -1;
-        if (speed > speedCap) wantThrust = -1;
-        else if (speed < speedCap * 0.85 && Math.abs(diff) < 1.2) wantThrust = 1;
-        else wantThrust = 0;
-      }
+      const wantThrust: 1 | -1 | 0 =
+        speed > speedCap ? -1 : speed < speedCap * 0.85 && Math.abs(diff) < 1.2 ? 1 : 0;
 
       const nextTurnKey = wantTurn === 0 ? null : wantTurn > 0 ? 'KeyD' : 'KeyA';
       if (nextTurnKey !== turnKey) {
@@ -331,13 +443,15 @@ async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: 
     const zone = sector?.extractionZones[0];
     if (!zone) throw new Error('zona de extração ausente');
     const asteroids = sector?.asteroids ?? [];
+    const bounds = sector?.bounds;
+    if (!bounds) throw new Error('limites do setor ausentes');
 
     await walkTo(alfa, HULL.helm.seat, HULL.helm.interactRadius - 10);
     await alfa.keyboard.press('KeyE');
     const alfaId = await sessionId(alfa);
     await expect.poll(() => world(alfa).then((w) => w?.ship.operatorId)).toBe(alfaId);
 
-    const flightOutcome = await flyToZone(alfa, zone, asteroids);
+    const flightOutcome = await flyToZone(alfa, zone, asteroids, bounds);
     // Only a resolved outcome (reached and evacuated, or the mission ending on its own
     // terms) settles for real before MissionRoom#settled lets the room close — the
     // database write is already committed by the time the client is back here. A
