@@ -70,7 +70,10 @@ jobs:
   e2e:
     name: Multiplayer com dois navegadores
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # tests/e2e/extraction.spec.ts flies a real sector twice, retrying a hostile seed with
+    # a fresh one (accepted game variance, not a bug) — a budget that needs real minutes,
+    # on top of the ~3 the rest of this job already takes.
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18.6-alpine

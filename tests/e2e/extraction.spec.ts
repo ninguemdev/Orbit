@@ -6,19 +6,24 @@ test.afterEach(closeOpenContexts);
 
 const HULL = SHIP_HULLS[ShipHullId.Scout];
 const SPEED_LIMIT = HULL.handling.maxSpeed * EXTRACTION.maxSpeedFraction;
-// flyToZone's own patience per attempt; see runMission for the retry budget this sizes.
-const FLIGHT_DEADLINE_MS = 180_000;
+// The CI job this runs in (.github/workflows/ci.yml, "Multiplayer com dois navegadores")
+// is capped at 25 real minutes, and setup plus the other 11 specs already use about 3 of
+// those — a budget the external kill enforces regardless of what Playwright's own
+// test.setTimeout says, and without a clean error. So the two missions below, worst case
+// (every attempt of both exhausting its own flight deadline), must fit well inside the
+// remainder. A normal flight was measured taking up to ~90s (potential-field steering
+// through a dense, ~60-asteroid sector is not a straight line), so this has real slack
+// above that, not just above the theoretical straight-line minimum.
+const FLIGHT_DEADLINE_MS = 150_000;
 // A hostile seed is accepted game variance (see runMission), not a bug, so a failed
-// flight retries with a fresh sector; bounded so a run of bad luck still terminates.
-// CI's slower round-trip per steering decision (see flyToZone's danger margin) makes a
-// fatal asteroid meaningfully likelier there than locally, so this needs real headroom:
-// 3 straight losses were observed in CI with this at 3.
-const MAX_ATTEMPTS = 5;
-// Generous slack per attempt beyond the flight itself: ready-up, confirm, walk to the
-// helm, the evacuation wait, and the menu transition. Keeps this above the retry loop's
-// own worst case so a pathological run surfaces runMission's diagnostic error instead of
-// a bare Playwright timeout.
-const PER_ATTEMPT_OVERHEAD_MS = 60_000;
+// flight retries with a fresh sector; bounded so a run of bad luck still terminates (and
+// stays inside the CI job budget above: see FLIGHT_DEADLINE_MS).
+const MAX_ATTEMPTS = 3;
+// Slack per attempt beyond the flight itself: ready-up, confirm, walk to the helm, the
+// evacuation wait, and the menu transition. Keeps this above the retry loop's own worst
+// case so a pathological run surfaces runMission's diagnostic error instead of a bare
+// Playwright timeout — itself still well inside the CI job budget above.
+const PER_ATTEMPT_OVERHEAD_MS = 30_000;
 test.setTimeout(2 * MAX_ATTEMPTS * (FLIGHT_DEADLINE_MS + PER_ATTEMPT_OVERHEAD_MS));
 
 interface ShipState {
