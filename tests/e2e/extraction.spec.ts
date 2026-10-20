@@ -197,41 +197,53 @@ async function flyToZone(
         escapeTurn = escapeTurn === 1 ? -1 : 1;
         bestDistanceAt = now;
       }
+      // The ahead-gap scan (and the speed cap it drives) always runs, escaping or not:
+      // escape used to steer blindly on a fixed heading for a full 3s with no braking at
+      // all, which a dense field (dozens of asteroids) punished repeatedly — the hull
+      // ground down over many corrections, stuck escaping the same cluster, because nothing
+      // slowed the ship down while it blindly turned past a neighbour. A wider margin than
+      // the offline-tuned value, and over a wider arc than "directly ahead" too: a real
+      // browser round-trip per decision runs well past the nominal 100ms wait below (worse
+      // yet on CI), so a close neighbour can become ahead by the time the next correction
+      // lands.
+      let aimX = dx / distance;
+      let aimY = dy / distance;
+      let aheadGap = Infinity;
+      for (const asteroid of asteroids) {
+        const adx = asteroid.x - x;
+        const ady = asteroid.y - y;
+        const adist = Math.hypot(adx, ady);
+        const danger = asteroid.radius + HULL.handling.radius + 1800;
+        if (adist > 0 && adist < danger) {
+          const weight = ((danger - adist) / danger) ** 2 * 1.5;
+          aimX += (-adx / adist) * weight;
+          aimY += (-ady / adist) * weight;
+        }
+        if (adist > 4500) continue;
+        const bearing = Math.atan2(ady, adx);
+        if (Math.abs(wrapAngle(bearing - angle)) > 1.0) continue;
+        const gap = adist - asteroid.radius - HULL.handling.radius;
+        if (gap < aheadGap) aheadGap = gap;
+      }
+      const approaching = distance < fitRadius + 2500;
+      const speedCap = Math.min(
+        HULL.handling.maxSpeed * 0.85,
+        Math.max(60, aheadGap - 350),
+        approaching ? SPEED_LIMIT * 1.3 : Infinity,
+      );
+
       if (now < escapeUntil) {
         wantTurn = escapeTurn;
+        const escapeSpeedCap = Math.min(speedCap, HULL.handling.maxSpeed * 0.45);
         wantThrust =
-          speed < HULL.handling.maxSpeed * 0.3 ? 1 : speed > HULL.handling.maxSpeed * 0.45 ? -1 : 0;
+          speed < Math.min(escapeSpeedCap, HULL.handling.maxSpeed * 0.3)
+            ? 1
+            : speed > escapeSpeedCap
+              ? -1
+              : 0;
       } else {
-        let aimX = dx / distance;
-        let aimY = dy / distance;
-        let aheadGap = Infinity;
-        for (const asteroid of asteroids) {
-          const adx = asteroid.x - x;
-          const ady = asteroid.y - y;
-          const adist = Math.hypot(adx, ady);
-          // A wider margin than the offline-tuned value: a real browser round-trip per
-          // decision runs well past the nominal 100ms wait below, so the ship drifts
-          // further between reactions than the tick-exact offline model assumed.
-          const danger = asteroid.radius + HULL.handling.radius + 1300;
-          if (adist > 0 && adist < danger) {
-            const weight = ((danger - adist) / danger) ** 2 * 1.5;
-            aimX += (-adx / adist) * weight;
-            aimY += (-ady / adist) * weight;
-          }
-          if (adist > 3500) continue;
-          const bearing = Math.atan2(ady, adx);
-          if (Math.abs(wrapAngle(bearing - angle)) > 0.55) continue;
-          const gap = adist - asteroid.radius - HULL.handling.radius;
-          if (gap < aheadGap) aheadGap = gap;
-        }
         const diff = wrapAngle(Math.atan2(aimY, aimX) - angle);
         wantTurn = Math.abs(diff) < 0.08 ? 0 : diff > 0 ? 1 : -1;
-        const approaching = distance < fitRadius + 2500;
-        const speedCap = Math.min(
-          HULL.handling.maxSpeed * 0.85,
-          Math.max(60, aheadGap - 200),
-          approaching ? SPEED_LIMIT * 1.3 : Infinity,
-        );
         if (speed > speedCap) wantThrust = -1;
         else if (speed < speedCap * 0.85 && Math.abs(diff) < 1.2) wantThrust = 1;
         else wantThrust = 0;
