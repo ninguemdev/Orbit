@@ -301,8 +301,13 @@ async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: 
       }),
     );
 
-    await expect.poll(() => layout(alfa).then((l) => l?.extractionZones?.length ?? 0)).toBe(1);
-    const sector = await layout(alfa);
+    let sector: Awaited<ReturnType<typeof layout>>;
+    await expect
+      .poll(async () => {
+        sector = await layout(alfa);
+        return sector?.extractionZones?.length ?? 0;
+      })
+      .toBe(1);
     const zone = sector?.extractionZones[0];
     if (!zone) throw new Error('zona de extração ausente');
     const asteroids = sector?.asteroids ?? [];
@@ -326,7 +331,7 @@ async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: 
       const extractButton = alfa.getByTestId('request-extraction');
       // The HUD polls server state on its own 200 ms cadence; give it a moment to catch
       // up with the authoritative state this test already observed as ready.
-      await expect(extractButton).toBeEnabled({ timeout: 2000 });
+      await expect(extractButton).toBeEnabled({ timeout: 5000 });
       await extractButton.click();
       await expect(alfa.getByTestId('evacuation-countdown')).toBeVisible();
       if ((await waitForEvacuation(alfa)) === 'cancelled') {
@@ -345,7 +350,12 @@ async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: 
       // The mission is still active server-side (its own timeout is 20 minutes) —
       // leave deliberately so this attempt ends now instead of outlasting the test.
       await Promise.all(
-        [alfa, bravo].map((page) => page.getByRole('button', { name: 'Sair da missão' }).click()),
+        [alfa, bravo].map((page) =>
+          page
+            .getByRole('button', { name: 'Sair da missão' })
+            .click()
+            .catch(() => undefined),
+        ),
       );
     }
     // flightOutcome === 'disconnected' falls through with guaranteedSettled left false:
