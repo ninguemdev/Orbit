@@ -405,8 +405,36 @@ async function flyToZone(
       // for the whole leg — cruising a long, straight approach at a sharp turn's speed
       // the entire way there wastes most of the flight's budget for no safety gain.
       const brakingDistance = 300 + severity * 1500;
+
+      // Real ground truth from a failed CI run (not reproduced locally): the ship took
+      // hull damage on almost every leg, and the logged clearance one tick earlier was
+      // routinely still 100-300 — nowhere near a "this is a pinch point" distance — before
+      // the very next sample showed a hit. A round-trip here lands well past the nominal
+      // 100ms wait on CI, so at real cruising speed the ship can cover that whole gap in
+      // the time between two corrections; no reactive threshold, however close, catches
+      // that in time. So speed near any obstacle is capped by its own stopping distance
+      // (v² = 2·a·gap) instead, every tick, not just once already alarmingly close:
+      // physically, the ship could still brake to a stop before reaching it even if the
+      // next correction were late, which an alarm threshold alone can never guarantee.
+      let nearestGap = Infinity;
+      let nearestBearing = 0;
+      for (const asteroid of asteroids) {
+        const adx = asteroid.x - x;
+        const ady = asteroid.y - y;
+        const adist = Math.hypot(adx, ady);
+        const gap = adist - asteroid.radius - HULL.handling.radius;
+        if (gap < nearestGap) {
+          nearestGap = gap;
+          nearestBearing = Math.atan2(ady, adx);
+        }
+      }
+      const stoppingCap = Math.sqrt(
+        Math.max(0, 2 * HULL.handling.reverseAcceleration * nearestGap),
+      );
+
       const speedCap = Math.min(
         HULL.handling.maxSpeed * 0.85,
+        Math.max(40, stoppingCap),
         // A sharp turn ahead slows down well before reaching it (see turnSeverity above),
         // not only once already close to or turning on it: cutting it at speed is exactly
         // how the old reactive steering grazed a neighbour while correcting late, and
@@ -422,25 +450,9 @@ async function flyToZone(
       let wantThrust: 1 | -1 | 0 =
         speed > speedCap ? -1 : speed < speedCap * 0.85 && Math.abs(diff) < 1.2 ? 1 : 0;
 
-      // Last-resort net, independent of the planned route: the route only guarantees
-      // ~82 units of hull clearance along it (shipClearance's extra plus PATH_MARGIN
-      // above), not that momentum never carries the ship outside that corridor, so this
-      // is a genuine emergency threshold, well inside that normal operating clearance,
-      // not a routine one — it must never settle for just slowing down once close, which
-      // would permanently strand the ship near any ordinary waypoint hugging that same
-      // ~82-unit margin: it keeps moving, away from the threat, until actually clear.
-      let nearestGap = Infinity;
-      let nearestBearing = 0;
-      for (const asteroid of asteroids) {
-        const adx = asteroid.x - x;
-        const ady = asteroid.y - y;
-        const adist = Math.hypot(adx, ady);
-        const gap = adist - asteroid.radius - HULL.handling.radius;
-        if (gap < nearestGap) {
-          nearestGap = gap;
-          nearestBearing = Math.atan2(ady, adx);
-        }
-      }
+      // Last-resort net, independent of the planned route and the speed cap above: still
+      // keeps moving away from the threat rather than merely slowing, in case the cap
+      // above did not act in time for some other reason.
       if (nearestGap < 40) {
         wantThrust = speed < 80 ? 1 : speed > 140 ? -1 : 0;
         const awayDiff = wrapAngle(nearestBearing + Math.PI - angle);
