@@ -6,8 +6,18 @@ test.afterEach(closeOpenContexts);
 
 const HULL = SHIP_HULLS[ShipHullId.Scout];
 const SPEED_LIMIT = HULL.handling.maxSpeed * EXTRACTION.maxSpeedFraction;
+// findPath's grid cell, and the clearance a cell's center must keep from every obstacle
+// beyond the ship's own radius. Both findPath and simplifyPath must use the same value:
+// generation (apps/server/src/simulation/sector-generator.ts, OPEN_SECTOR.asteroids)
+// only guarantees asteroids.extraGap (200) beyond one ship diameter of the largest hull
+// (2*252=504) of surface-to-surface clearance between any two of them — 704 total, so at
+// most 352 on each side of the midline. HULL.handling.radius (216) plus this margin must
+// stay safely under that, or the search can report no route through a sector the game
+// itself guarantees is flyable.
+const PATH_CELL = 60;
+const PATH_MARGIN = (PATH_CELL * Math.SQRT2) / 2;
 // The CI job this runs in (.github/workflows/ci.yml, "Multiplayer com dois navegadores")
-// is capped at 35 real minutes, and setup plus the other 11 specs already use about 3 of
+// is capped at 38 real minutes, and setup plus the other 11 specs already use about 4 of
 // those — a budget the external kill enforces regardless of what Playwright's own
 // test.setTimeout says, and without a clean error. So the two missions below, worst case
 // (every attempt of both exhausting its own flight deadline), must fit well inside the
@@ -24,10 +34,11 @@ const FLIGHT_DEADLINE_MS = 240_000;
 // a third attempt is worth more here than a tighter per-attempt deadline would be.
 const MAX_ATTEMPTS = 3;
 // Slack per attempt beyond the flight itself: ready-up, confirm, walk to the helm, the
-// evacuation wait, and the menu transition. Keeps this above the retry loop's own worst
-// case so a pathological run surfaces runMission's diagnostic error instead of a bare
-// Playwright timeout — itself still well inside the CI job budget above.
-const PER_ATTEMPT_OVERHEAD_MS = 30_000;
+// evacuation wait, and the menu transition. This is a realistic budget for those, not
+// walkTo's own absolute worst case (it could in principle run far longer) — a run that
+// pathological is already its own, rarer problem, worth a bare Playwright timeout to flag
+// as unusual rather than a budget sized only to accommodate it.
+const PER_ATTEMPT_OVERHEAD_MS = 45_000;
 test.setTimeout(2 * MAX_ATTEMPTS * (FLIGHT_DEADLINE_MS + PER_ATTEMPT_OVERHEAD_MS));
 
 interface ShipState {
@@ -168,17 +179,15 @@ function findPath(
   goal: Point,
   goalRadius: number,
 ): Point[] | null {
-  const CELL = 120;
-  const margin = (CELL * Math.SQRT2) / 2;
-  const columns = Math.max(1, Math.floor((bounds.maxX - bounds.minX) / CELL));
-  const rows = Math.max(1, Math.floor((bounds.maxY - bounds.minY) / CELL));
+  const columns = Math.max(1, Math.floor((bounds.maxX - bounds.minX) / PATH_CELL));
+  const rows = Math.max(1, Math.floor((bounds.maxY - bounds.minY) / PATH_CELL));
   const toColumn = (px: number) =>
-    Math.min(columns - 1, Math.max(0, Math.floor((px - bounds.minX) / CELL)));
+    Math.min(columns - 1, Math.max(0, Math.floor((px - bounds.minX) / PATH_CELL)));
   const toRow = (py: number) =>
-    Math.min(rows - 1, Math.max(0, Math.floor((py - bounds.minY) / CELL)));
+    Math.min(rows - 1, Math.max(0, Math.floor((py - bounds.minY) / PATH_CELL)));
   const center = (cell: number): Point => ({
-    x: bounds.minX + ((cell % columns) + 0.5) * CELL,
-    y: bounds.minY + (Math.floor(cell / columns) + 0.5) * CELL,
+    x: bounds.minX + ((cell % columns) + 0.5) * PATH_CELL,
+    y: bounds.minY + (Math.floor(cell / columns) + 0.5) * PATH_CELL,
   });
   const cellsWithin = (point: Point, radius: number): number[] => {
     const cells: number[] = [];
@@ -209,7 +218,7 @@ function findPath(
         : 0;
   }
   for (const obstacle of obstacles) {
-    const reach = obstacle.radius + shipRadius + margin;
+    const reach = obstacle.radius + shipRadius + PATH_MARGIN;
     for (const cell of cellsWithin(obstacle, reach)) {
       if (Math.hypot(center(cell).x - obstacle.x, center(cell).y - obstacle.y) < reach) {
         free[cell] = 0;
@@ -259,11 +268,11 @@ function simplifyPath(
   obstacles: readonly Zone[],
   shipRadius: number,
 ): Point[] {
-  // At least findPath's own grid margin (CELL*sqrt2/2 there): a shortcut must never be
-  // tighter than the grid route it replaces, or simplifying it away is exactly what
-  // erodes the clearance the search was careful to keep.
+  // The same margin findPath itself used: a shortcut must never be tighter than the grid
+  // route it replaces, or simplifying it away is exactly what erodes the clearance the
+  // search was careful to keep.
   const clear = (a: Point, b: Point) =>
-    obstacles.every((o) => distanceToSegment(o, a, b) >= o.radius + shipRadius + 100);
+    obstacles.every((o) => distanceToSegment(o, a, b) >= o.radius + shipRadius + PATH_MARGIN);
   const result: Point[] = [path[0] as Point];
   let i = 0;
   while (i < path.length - 1) {
@@ -304,7 +313,9 @@ async function flyToZone(
   // move within its tick, not just checking the position after it, so a fast ship can
   // still close a narrow gap between two samples here — this pads the route itself
   // against that, rather than trying to react to it in time once already that close.
-  const shipClearance = HULL.handling.radius + 120;
+  // Kept modest (see PATH_CELL/PATH_MARGIN above): generation only guarantees 352 of
+  // this kind of clearance on each side of the midline between two asteroids.
+  const shipClearance = HULL.handling.radius + 40;
   const start = (await world(page))?.ship;
   if (!start) return 'disconnected';
   const rawPath = findPath(bounds, asteroids, shipClearance, start, zone, fitRadius * 0.6);
@@ -358,7 +369,6 @@ async function flyToZone(
       // line and can drift it back out (or over the limit) during the 10s evacuation
       // countdown, which cancels it — see the cancellation handling in runMission.
       if (distanceToZone <= fitRadius * 0.7 && speed <= SPEED_LIMIT * 0.5) {
-        await release();
         return 'reached';
       }
 
@@ -405,12 +415,12 @@ async function flyToZone(
         speed > speedCap ? -1 : speed < speedCap * 0.85 && Math.abs(diff) < 1.2 ? 1 : 0;
 
       // Last-resort net, independent of the planned route: the route only guarantees
-      // ~85 units of hull clearance along it (findPath's own margin), not that momentum
-      // never carries the ship outside that corridor, so this is a genuine emergency
-      // threshold, well inside that normal operating clearance, not a routine one — it
-      // must never settle for just slowing down once close, which would permanently
-      // strand the ship near any ordinary waypoint hugging that same ~85-unit margin:
-      // it keeps moving, away from the threat, until actually clear of it.
+      // ~82 units of hull clearance along it (shipClearance's extra plus PATH_MARGIN
+      // above), not that momentum never carries the ship outside that corridor, so this
+      // is a genuine emergency threshold, well inside that normal operating clearance,
+      // not a routine one — it must never settle for just slowing down once close, which
+      // would permanently strand the ship near any ordinary waypoint hugging that same
+      // ~82-unit margin: it keeps moving, away from the threat, until actually clear.
       let nearestGap = Infinity;
       let nearestBearing = 0;
       for (const asteroid of asteroids) {
@@ -423,7 +433,7 @@ async function flyToZone(
           nearestBearing = Math.atan2(ady, adx);
         }
       }
-      if (nearestGap < 80) {
+      if (nearestGap < 40) {
         wantThrust = speed < 80 ? 1 : speed > 140 ? -1 : 0;
         const awayDiff = wrapAngle(nearestBearing + Math.PI - angle);
         wantTurn = Math.abs(awayDiff) < 0.1 ? 0 : awayDiff > 0 ? 1 : -1;
@@ -498,10 +508,13 @@ async function runMission(alfa: Page, bravo: Page, alfaNick: string, bravoNick: 
 
     let sector: Awaited<ReturnType<typeof layout>>;
     await expect
-      .poll(async () => {
-        sector = await layout(alfa);
-        return sector?.extractionZones?.length ?? 0;
-      })
+      .poll(
+        async () => {
+          sector = await layout(alfa);
+          return sector?.extractionZones?.length ?? 0;
+        },
+        { timeout: 15_000 },
+      )
       .toBe(1);
     const zone = sector?.extractionZones[0];
     if (!zone) throw new Error('zona de extração ausente');
