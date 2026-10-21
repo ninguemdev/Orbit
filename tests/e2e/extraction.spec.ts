@@ -48,6 +48,7 @@ interface ShipState {
   readonly vx: number;
   readonly vy: number;
   readonly operatorId: string;
+  readonly hullPoints: number;
 }
 interface MissionWorld {
   readonly ship: ShipState;
@@ -355,13 +356,20 @@ async function flyToZone(
 
   let waypointIndex = 0;
   const deadline = Date.now() + FLIGHT_DEADLINE_MS;
+  // CI has destroyed the ship repeatedly across unrelated steering rewrites and margin
+  // sizes that all ran clean locally, so the cause is something this flight loop itself
+  // can observe but a local run apparently does not reproduce. This prints to the CI log
+  // directly (no artifact download needed) so the next failure's actual flight profile —
+  // not another guess — is what drives the next fix.
+  let lastHull = Infinity;
+  let lastDiagAt = 0;
 
   try {
     for (;;) {
       if (Date.now() > deadline) return 'gave-up';
       const state = await world(page);
       if (!state) return 'disconnected';
-      const { x, y, angle, vx, vy } = state.ship;
+      const { x, y, angle, vx, vy, hullPoints } = state.ship;
       const distanceToZone = Math.hypot(zone.x - x, zone.y - y);
       const speed = Math.hypot(vx, vy);
       // Comfortably inside the zone and nearly stopped, not merely under the limit at
@@ -437,6 +445,16 @@ async function flyToZone(
         wantThrust = speed < 80 ? 1 : speed > 140 ? -1 : 0;
         const awayDiff = wrapAngle(nearestBearing + Math.PI - angle);
         wantTurn = Math.abs(awayDiff) < 0.1 ? 0 : awayDiff > 0 ? 1 : -1;
+      }
+      if (hullPoints !== lastHull || Date.now() - lastDiagAt > 2000) {
+        lastHull = hullPoints;
+        lastDiagAt = Date.now();
+        console.log(
+          `[flight] hull=${hullPoints.toFixed(1)} wp=${waypointIndex}/${waypoints.length} ` +
+            `pos=(${x.toFixed(0)},${y.toFixed(0)}) speed=${speed.toFixed(0)} ` +
+            `gap=${nearestGap === Infinity ? 'inf' : nearestGap.toFixed(0)} ` +
+            `thrust=${wantThrust} turn=${wantTurn}`,
+        );
       }
 
       const nextTurnKey = wantTurn === 0 ? null : wantTurn > 0 ? 'KeyD' : 'KeyA';
