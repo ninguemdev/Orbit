@@ -428,9 +428,16 @@ async function flyToZone(
           nearestBearing = Math.atan2(ady, adx);
         }
       }
-      const stoppingCap = Math.sqrt(
-        Math.max(0, 2 * HULL.handling.reverseAcceleration * nearestGap),
-      );
+      // The exact v²=2·a·gap speed is a zero-margin answer: braking from exactly that
+      // speed, starting exactly now, uses the whole gap to stop. Real braking starts a
+      // tick late, and a ship coasting at (just under) that speed is still closing the
+      // gap the entire time it is not yet over the cap — which shrinks the gap, which
+      // lowers the cap, in a loop that never forces it to actually slow down until the
+      // gap is nearly gone. Real CI data showed exactly that: hull damage on almost every
+      // leg despite this formula on its own. The factor below is real margin, not a
+      // tuning nicety.
+      const stoppingCap =
+        Math.sqrt(Math.max(0, 2 * HULL.handling.reverseAcceleration * nearestGap)) * 0.55;
 
       const speedCap = Math.min(
         HULL.handling.maxSpeed * 0.85,
