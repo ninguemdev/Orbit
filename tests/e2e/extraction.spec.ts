@@ -465,13 +465,17 @@ async function flyToZone(
         const awayDiff = wrapAngle(nearestBearing + Math.PI - angle);
         wantTurn = Math.abs(awayDiff) < 0.1 ? 0 : awayDiff > 0 ? 1 : -1;
       }
-      if (hullPoints !== lastHull || Date.now() - lastDiagAt > 2000) {
+      // Every tick once a close approach starts, not just every 2s/on hull change: the
+      // previous round's throttled log still missed the actual lead-up tick by tick, the
+      // one thing left to actually see.
+      if (hullPoints !== lastHull || nearestGap < 400 || Date.now() - lastDiagAt > 2000) {
         lastHull = hullPoints;
         lastDiagAt = Date.now();
         console.log(
-          `[flight] hull=${hullPoints.toFixed(1)} wp=${waypointIndex}/${waypoints.length} ` +
+          `[flight] t=${Date.now()} hull=${hullPoints.toFixed(1)} wp=${waypointIndex}/${waypoints.length} ` +
             `pos=(${x.toFixed(0)},${y.toFixed(0)}) speed=${speed.toFixed(0)} ` +
             `gap=${nearestGap === Infinity ? 'inf' : nearestGap.toFixed(0)} ` +
+            `cap=${speedCap.toFixed(0)} stop=${stoppingCap.toFixed(0)} ` +
             `thrust=${wantThrust} turn=${wantTurn}`,
         );
       }
