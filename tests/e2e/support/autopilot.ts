@@ -27,8 +27,8 @@ import { wrapAngle } from '../../../packages/simulation/src/vec2';
  *   one of them.
  * - A route's clearance only holds on the route itself: the ship follows the polyline
  *   instead of cutting towards the next waypoint, slows down before each corner, and a
- *   safety check rejects any decision that could no longer be braked to a stop short of
- *   every solid.
+ *   safety check replaces any decision that could no longer be braked to a stop short of
+ *   every solid with the safest alternative it finds.
  */
 
 const STEP_SECONDS = 1 / TICK_RATE_HZ;
@@ -140,6 +140,25 @@ interface RouteFix {
 }
 
 const NEUTRAL: ShipControl = { thrust: 0, turn: 0 };
+
+/**
+ * What the server applies for these keys: the client reads W/S/A/D as one screen-space
+ * direction clamped to length 1 (KeyboardControls.axes), so thrust and turn held at once
+ * each act at only 1/√2 of their full strength.
+ */
+function applied(thrust: number, turn: number): ShipControl {
+  const scale = thrust !== 0 && turn !== 0 ? Math.SQRT1_2 : 1;
+  return { thrust: thrust * scale, turn: turn * scale };
+}
+
+/**
+ * How long an axis needs to stay held to deliver `ms` of full strength while the other axis
+ * is held for `otherMs` from the same moment (both at 1/√2 during the overlap).
+ */
+function stretched(ms: number, otherMs: number): number {
+  if (ms === 0 || otherMs === 0 || !Number.isFinite(ms)) return ms;
+  return ms <= Math.SQRT1_2 * otherMs ? ms / Math.SQRT1_2 : ms + (1 - Math.SQRT1_2) * otherMs;
+}
 const ZERO: Point = { x: 0, y: 0 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -429,10 +448,14 @@ export class Autopilot {
   }
 
   /** Records the keys held from local time `atMs` on, exactly as they were sent. */
-  sent(control: ShipControl, atMs: number): void {
-    this.#sent.push({ at: atMs, thrust: control.thrust, turn: control.turn });
-    // Only what can still matter to a prediction or to measuring the delay.
-    while (this.#sent.length > 200) this.#sent.shift();
+  sent(keys: ShipControl, atMs: number): void {
+    this.#sent.push({ at: atMs, ...applied(keys.thrust, keys.turn) });
+    // Only what can still matter to a prediction or to measuring the delay; what was held
+    // before the oldest record kept still counts as held from then on.
+    if (this.#sent.length > 200) {
+      const dropped = this.#sent.splice(0, this.#sent.length - 200);
+      this.#sent.unshift({ ...(dropped.at(-1) as SentControl), at: -Infinity });
+    }
   }
 
   /** Decides the keys to press now, as of local time `nowMs`. */
@@ -657,10 +680,15 @@ export class Autopilot {
     const acceleration = useForward ? handling.thrustAcceleration : handling.reverseAcceleration;
     const burnMs =
       Math.abs(error) <= ALIGNED ? ((needed * Math.cos(error)) / acceleration) * 1000 : 0;
+    const turn = pulse(error);
+    // Held together, each key only acts at 1/√2 (see `applied`): both last longer.
+    const turnMs = stretched(turn.turnMs, burnMs);
+    const thrustMs = stretched(burnMs, turnMs);
     return {
-      thrust: burnMs > 0 ? (useForward ? 1 : -1) : 0,
-      thrustMs: burnMs >= cycleMs ? Infinity : burnMs,
-      ...pulse(error),
+      thrust: thrustMs > 0 ? (useForward ? 1 : -1) : 0,
+      thrustMs: thrustMs >= cycleMs ? Infinity : thrustMs,
+      turn: turn.turn,
+      turnMs: turnMs >= cycleMs ? Infinity : turnMs,
     };
   }
 
@@ -707,10 +735,10 @@ export class Autopilot {
         }
       }
       const elapsed = t - startedAt;
-      const control = {
-        thrust: elapsed < maneuver.thrustMs ? maneuver.thrust : 0,
-        turn: elapsed < maneuver.turnMs ? maneuver.turn : 0,
-      };
+      const control = applied(
+        elapsed < maneuver.thrustMs ? maneuver.thrust : 0,
+        elapsed < maneuver.turnMs ? maneuver.turn : 0,
+      );
       const step = stepShip(state, control, STEP_SECONDS, this.#setup.handling, geometry);
       state = step.state;
       least = Math.min(least, this.#gap(state.position, solids) - step.impactSpeed);
@@ -718,6 +746,11 @@ export class Autopilot {
     return least;
   }
 
+  /**
+   * The route's own decision when its rollout keeps a safe gap; otherwise whichever of the
+   * alternatives (braking, or holding any pair of keys) keeps the largest one — even when
+   * none is fully safe, the least bad still beats the decision already known to be worse.
+   */
   #safest(state: ShipKinematics, nominal: Maneuver, cycleMs: number) {
     // Only what the ship could reach within the horizon matters.
     const speed = Math.hypot(state.velocity.x, state.velocity.y);
@@ -782,16 +815,27 @@ export async function fly(
   options: FlightOptions,
 ): Promise<'reached' | 'disconnected' | 'gave-up'> {
   const held: { thrust: Axis; turn: Axis } = { thrust: 0, turn: 0 };
-  /** Changes one axis; returns when the change was sent, the start of its pulse. */
+  /**
+   * Changes one axis, recording each key event as it is sent (a switch from one key to its
+   * opposite is a release, then a press a round trip later); returns when the new key was
+   * sent, the start of its pulse.
+   */
   const set = async (axis: 'thrust' | 'turn', value: Axis): Promise<number> => {
-    const at = cockpit.now();
     const current = held[axis];
-    if (current === value) return at;
-    if (current !== 0) await cockpit.key(keyFor(axis, current), false);
-    if (value !== 0) await cockpit.key(keyFor(axis, value), true);
-    held[axis] = value;
-    pilot.sent({ ...held }, at);
-    return at;
+    if (current === value) return cockpit.now();
+    if (current !== 0) {
+      const releasedAt = cockpit.now();
+      await cockpit.key(keyFor(axis, current), false);
+      held[axis] = 0;
+      pilot.sent({ ...held }, releasedAt);
+    }
+    const pressedAt = cockpit.now();
+    if (value !== 0) {
+      await cockpit.key(keyFor(axis, value), true);
+      held[axis] = value;
+      pilot.sent({ ...held }, pressedAt);
+    }
+    return pressedAt;
   };
 
   try {
@@ -801,7 +845,9 @@ export async function fly(
       const reading = await cockpit.read();
       if (!reading) return 'disconnected';
       pilot.observe(reading, cockpit.now());
-      if (options.arrived(reading)) return 'reached';
+      // Not while thrust is still held: it keeps acting until its release reaches the
+      // server, after this reading — the next decision lets go of it first.
+      if (options.arrived(reading) && held.thrust === 0) return 'reached';
       const maneuver = pilot.decide(cockpit.now());
       options.onDecision?.(reading, maneuver);
       const releases: { axis: 'thrust' | 'turn'; at: number }[] = [];

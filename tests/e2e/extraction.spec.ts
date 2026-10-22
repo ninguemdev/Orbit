@@ -9,8 +9,8 @@ test.afterEach(closeOpenContexts);
 // state read and key event then takes about three times as long (~140 ms instead of ~45;
 // CI's own flight logs put it near 400 ms) and a key pulse lands hundreds of milliseconds
 // late — the very latency that kept the old flight loop from ever controlling the ship on
-// CI. The flight prints its own log instead.
-test.use({ trace: 'off' });
+// CI. The flight prints its own log instead, and a failure still leaves a screenshot.
+test.use({ trace: 'off', screenshot: 'only-on-failure' });
 
 const HULL = SHIP_HULLS[ShipHullId.Scout];
 const SPEED_LIMIT = HULL.handling.maxSpeed * EXTRACTION.maxSpeedFraction;
