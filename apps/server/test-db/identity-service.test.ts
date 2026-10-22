@@ -22,7 +22,10 @@ const fakeHasher: PasswordHasher = {
 describe('IdentityService limits and session lifetime', () => {
   let throwaway: ThrowawayDatabase;
   let pool: pg.Pool;
-  let now = new Date('2026-10-15T12:00:00Z');
+  // Starts at the real time, not a fixed date: the database still stamps created_at on
+  // its own clock, and a session issued from a stale mocked "now" would already expire
+  // before it was created (sessions_expires_after_creation) once that date is past.
+  let now = new Date();
   let service: IdentityService;
 
   beforeAll(async () => {
